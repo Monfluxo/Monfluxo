@@ -153,7 +153,8 @@ async function debugTransaction(signature, wallet) {
   console.log("WALLET BALANCES");
   printBalanceChanges(transaction, wallet);
 }
-\nfunction formatNumber(value, digits = 9) {
+
+function formatNumber(value, digits = 9) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return String(value);
   }
