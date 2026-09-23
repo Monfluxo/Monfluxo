@@ -336,6 +336,8 @@ try {
       console.log("Token mint:", trade.tokenMint);
       console.log("Token amount:", formatNumber(trade.tokenAmount));
       console.log("SOL amount:", formatNumber(trade.solAmount));
+      console.log("Parser:", trade.parser || "unknown");
+      console.log("DEX:", trade.dex || "unknown");
       console.log(
         "Estimated price:",
         formatNumber(trade.estimatedPriceSol)
