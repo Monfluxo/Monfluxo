@@ -87,6 +87,14 @@ try {
     });
   }
 
+  // Helius returns history newest -> oldest. The position engine must
+  // process trades oldest -> newest so sells consume previously acquired lots.
+  trades.sort((a, b) => {
+    const timeA = a.blockTime ?? 0;
+    const timeB = b.blockTime ?? 0;
+    return timeA - timeB;
+  });
+
   const positions = buildPositions(trades);
 
   let totalRealizedPnl = 0;
