@@ -9,6 +9,19 @@ if (!wallet) {
   process.exit(1);
 }
 
+function formatTimestamp(blockTime) {
+  if (!blockTime) return "N/A";
+  return new Date(blockTime * 1000).toISOString();
+}
+
+function formatNumber(value, digits = 9) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return value.toFixed(digits);
+}
+
 async function loadAllTransactions(address) {
   const allTransactions = [];
   const seenPaginationTokens = new Set();
@@ -21,16 +34,17 @@ async function loadAllTransactions(address) {
 
     const result = await getTransactionsForAddress(address, paginationToken);
     const transactions = result?.data || [];
+    const nextPaginationToken = result?.paginationToken || null;
 
-    console.log(`Page ${page}: ${transactions.length} transactions`);
+    console.log(
+      `Page ${page}: ${transactions.length} transactions | hasNextPage: ${Boolean(nextPaginationToken)}`
+    );
 
     if (transactions.length === 0) {
       break;
     }
 
     allTransactions.push(...transactions);
-
-    const nextPaginationToken = result?.paginationToken || null;
 
     if (!nextPaginationToken) {
       break;
@@ -45,7 +59,10 @@ async function loadAllTransactions(address) {
     page++;
   }
 
-  return allTransactions;
+  return {
+    transactions: allTransactions,
+    pages: page
+  };
 }
 
 try {
@@ -55,19 +72,60 @@ try {
   console.log("Wallet:", wallet);
   console.log("");
 
-  const allTransactions = await loadAllTransactions(wallet);
+  const { transactions: allTransactions, pages } =
+    await loadAllTransactions(wallet);
+
+  const blockTimes = allTransactions
+    .map((transaction) => transaction?.blockTime)
+    .filter((blockTime) => typeof blockTime === "number");
+
+  const newestBlockTime =
+    blockTimes.length > 0 ? Math.max(...blockTimes) : null;
+
+  const oldestBlockTime =
+    blockTimes.length > 0 ? Math.min(...blockTimes) : null;
+
+  const uniqueSignatures = new Set(
+    allTransactions
+      .map(
+        (transaction) =>
+          transaction?.transaction?.signatures?.[0] ||
+          transaction?.signature ||
+          null
+      )
+      .filter(Boolean)
+  );
 
   console.log("");
   console.log("========================");
   console.log("HISTORY LOADED");
   console.log("========================");
-  console.log("Pages loaded:", allTransactions.length === 0 ? 0 : "complete");
+  console.log("Pages loaded:", pages);
   console.log("Transactions loaded:", allTransactions.length);
+  console.log("Unique signatures:", uniqueSignatures.size);
+  console.log("Newest transaction:", formatTimestamp(newestBlockTime));
+  console.log("Oldest transaction:", formatTimestamp(oldestBlockTime));
+
+  const typeCounts = {
+    BUY: 0,
+    SELL: 0,
+    TRANSFER_IN: 0,
+    TRANSFER_OUT: 0,
+    SOL_TRANSFER: 0,
+    OTHER: 0
+  };
 
   const trades = [];
+  const parsedTradeDiagnostics = [];
 
   for (const transaction of allTransactions) {
     const analysis = parseTransaction(transaction, wallet);
+
+    if (typeCounts[analysis.type] !== undefined) {
+      typeCounts[analysis.type]++;
+    } else {
+      typeCounts.OTHER++;
+    }
 
     if (analysis.type !== "BUY" && analysis.type !== "SELL") {
       continue;
@@ -77,13 +135,71 @@ try {
       continue;
     }
 
-    trades.push({
+    const signature =
+      transaction?.transaction?.signatures?.[0] ||
+      transaction?.signature ||
+      null;
+
+    const trade = {
       ...analysis.trade,
-      signature:
-        transaction?.transaction?.signatures?.[0] ||
-        transaction?.signature ||
-        null,
+      signature,
       blockTime: transaction?.blockTime || null
+    };
+
+    trades.push(trade);
+
+    parsedTradeDiagnostics.push({
+      signature,
+      blockTime: transaction?.blockTime || null,
+      type: analysis.type,
+      tokenMint: analysis.trade.tokenMint,
+      tokenAmount: analysis.trade.tokenAmount,
+      solAmount: analysis.trade.solAmount,
+      estimatedPriceSol: analysis.trade.estimatedPriceSol,
+      tokenChanges: analysis.tokenChanges,
+      solChange: analysis.solChange
+    });
+  }
+
+  console.log("");
+  console.log("========================");
+  console.log("PARSER SUMMARY");
+  console.log("========================");
+  console.log("BUY:", typeCounts.BUY);
+  console.log("SELL:", typeCounts.SELL);
+  console.log("TRANSFER_IN:", typeCounts.TRANSFER_IN);
+  console.log("TRANSFER_OUT:", typeCounts.TRANSFER_OUT);
+  console.log("SOL_TRANSFER:", typeCounts.SOL_TRANSFER);
+  console.log("OTHER:", typeCounts.OTHER);
+  console.log("Trades created:", trades.length);
+
+  console.log("");
+  console.log("========================");
+  console.log("PARSED TRADE DIAGNOSTICS");
+  console.log("========================");
+
+  const diagnosticTrades = [...parsedTradeDiagnostics]
+    .sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0))
+    .slice(0, 10);
+
+  if (diagnosticTrades.length === 0) {
+    console.log("No BUY/SELL trades were created.");
+  } else {
+    diagnosticTrades.forEach((trade, index) => {
+      console.log("");
+      console.log(`#${index + 1}`);
+      console.log("Signature:", trade.signature);
+      console.log("Time:", formatTimestamp(trade.blockTime));
+      console.log("Type:", trade.type);
+      console.log("Token mint:", trade.tokenMint);
+      console.log("Token amount:", formatNumber(trade.tokenAmount));
+      console.log("SOL amount:", formatNumber(trade.solAmount));
+      console.log(
+        "Estimated price:",
+        formatNumber(trade.estimatedPriceSol)
+      );
+      console.log("Token changes:", JSON.stringify(trade.tokenChanges));
+      console.log("SOL change:", JSON.stringify(trade.solChange));
     });
   }
 
@@ -140,7 +256,8 @@ try {
     console.log("");
     console.log(`#${index + 1}`);
     console.log("Token:", position.mint);
-    console.log("Trades:", position.trades);
+    console.log("Buys:", position.buys);
+    console.log("Sells:", position.sells);
     console.log("Tokens bought:", position.tokensBought);
     console.log("Tokens sold:", position.tokensSold);
     console.log("Tokens remaining:", position.tokensRemaining);
