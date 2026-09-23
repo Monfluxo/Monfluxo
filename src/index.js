@@ -6,187 +6,150 @@ const wallet = process.argv[2];
 
 if (!wallet) {
   console.error("Usage: npm start <wallet_address>");
-    process.exit(1);
+  process.exit(1);
+}
+
+async function loadAllTransactions(address) {
+  const allTransactions = [];
+  const seenPaginationTokens = new Set();
+
+  let paginationToken = null;
+  let page = 1;
+
+  while (true) {
+    console.log(`Loading page ${page}...`);
+
+    const result = await getTransactionsForAddress(address, paginationToken);
+    const transactions = result?.data || [];
+
+    console.log(`Page ${page}: ${transactions.length} transactions`);
+
+    if (transactions.length === 0) {
+      break;
     }
 
-    try {
-      console.log("");
-        console.log("MONFLUXO WALLET ANALYZER");
-          console.log("========================");
-            console.log("Wallet:", wallet);
-              console.log("");
+    allTransactions.push(...transactions);
 
-                const allTransactions = [];
+    const nextPaginationToken = result?.paginationToken || null;
 
-                  let paginationToken = null;
-                    let page = 1;
-                      const maxPages = 5;
+    if (!nextPaginationToken) {
+      break;
+    }
 
-                        while (page <= maxPages) {
-                            console.log(`Loading page ${page}...`);
+    if (seenPaginationTokens.has(nextPaginationToken)) {
+      throw new Error("Pagination loop detected");
+    }
 
-                                const result = await getTransactionsForAddress(
-                                      wallet,
-                                            paginationToken
-                                                );
+    seenPaginationTokens.add(nextPaginationToken);
+    paginationToken = nextPaginationToken;
+    page++;
+  }
 
-                                                    const transactions = result?.data || [];
+  return allTransactions;
+}
 
-                                                        console.log(
-                                                              `Page ${page}: ${transactions.length} transactions`
-                                                                  );
+try {
+  console.log("");
+  console.log("MONFLUXO WALLET ANALYZER");
+  console.log("========================");
+  console.log("Wallet:", wallet);
+  console.log("");
 
-                                                                      if (transactions.length === 0) {
-                                                                            break;
-                                                                                }
+  const allTransactions = await loadAllTransactions(wallet);
 
-                                                                                    allTransactions.push(...transactions);
+  console.log("");
+  console.log("========================");
+  console.log("HISTORY LOADED");
+  console.log("========================");
+  console.log("Pages loaded:", allTransactions.length === 0 ? 0 : "complete");
+  console.log("Transactions loaded:", allTransactions.length);
 
-                                                                                        paginationToken =
-                                                                                              result?.paginationToken || null;
+  const trades = [];
 
-                                                                                                  if (!paginationToken) {
-                                                                                                        break;
-                                                                                                            }
+  for (const transaction of allTransactions) {
+    const analysis = parseTransaction(transaction, wallet);
 
-                                                                                                                page++;
-                                                                                                                  }
+    if (analysis.type !== "BUY" && analysis.type !== "SELL") {
+      continue;
+    }
 
-                                                                                                                    const trades = [];
+    if (!analysis.trade) {
+      continue;
+    }
 
-                                                                                                                      for (const transaction of allTransactions) {
-                                                                                                                          const analysis =
-                                                                                                                                parseTransaction(transaction, wallet);
+    trades.push({
+      ...analysis.trade,
+      signature:
+        transaction?.transaction?.signatures?.[0] ||
+        transaction?.signature ||
+        null,
+      blockTime: transaction?.blockTime || null
+    });
+  }
 
-                                                                                                                                    if (
-                                                                                                                                          analysis.type !== "BUY" &&
-                                                                                                                                                analysis.type !== "SELL"
-                                                                                                                                                    ) {
-                                                                                                                                                          continue;
-                                                                                                                                                              }
+  const positions = buildPositions(trades);
 
-                                                                                                                                                                  if (!analysis.trade) {
-                                                                                                                                                                        continue;
-                                                                                                                                                                            }
+  let totalRealizedPnl = 0;
+  let openPositions = 0;
 
-                                                                                                                                                                                trades.push({
-                                                                                                                                                                                      ...analysis.trade,
-                                                                                                                                                                                            signature:
-                                                                                                                                                                                                    transaction?.transaction?.signatures?.[0] ||
-                                                                                                                                                                                                            transaction?.signature ||
-                                                                                                                                                                                                                    null,
-                                                                                                                                                                                                                          blockTime:
-                                                                                                                                                                                                                                  transaction?.blockTime || null
-                                                                                                                                                                                                                                      });
-                                                                                                                                                                                                                                        }
+  for (const position of positions.values()) {
+    totalRealizedPnl += position.realizedPnl;
 
-                                                                                                                                                                                                                                          const positions =
-                                                                                                                                                                                                                                              buildPositions(trades);
+    if (position.tokensRemaining > 0.000000001) {
+      openPositions++;
+    }
+  }
 
-                                                                                                                                                                                                                                                let totalRealizedPnl = 0;
-                                                                                                                                                                                                                                                  let openPositions = 0;
+  console.log("");
+  console.log("========================");
+  console.log("POSITION ENGINE");
+  console.log("========================");
 
-                                                                                                                                                                                                                                                    for (const position of positions.values()) {
-                                                                                                                                                                                                                                                        totalRealizedPnl +=
-                                                                                                                                                                                                                                                              position.realizedPnl;
+  console.log("");
+  console.log("Trades analyzed:", trades.length);
+  console.log("Unique tokens:", positions.size);
+  console.log("Open positions:", openPositions);
 
-                                                                                                                                                                                                                                                                  if (position.tokensRemaining > 0.000000001) {
-                                                                                                                                                                                                                                                                        openPositions++;
-                                                                                                                                                                                                                                                                            }
-                                                                                                                                                                                                                                                                              }
+  console.log("");
+  console.log("REALIZED PNL");
+  console.log("------------");
 
-                                                                                                                                                                                                                                                                                console.log("");
-                                                                                                                                                                                                                                                                                  console.log("========================");
-                                                                                                                                                                                                                                                                                    console.log("POSITION ENGINE");
-                                                                                                                                                                                                                                                                                      console.log("========================");
+  console.log(
+    "Realized PnL:",
+    totalRealizedPnl.toFixed(6),
+    "SOL"
+  );
 
-                                                                                                                                                                                                                                                                                        console.log("");
-                                                                                                                                                                                                                                                                                          console.log("Trades analyzed:", trades.length);
-                                                                                                                                                                                                                                                                                            console.log("Unique tokens:", positions.size);
-                                                                                                                                                                                                                                                                                              console.log("Open positions:", openPositions);
+  console.log("");
+  console.log("POSITIONS");
+  console.log("---------");
 
-                                                                                                                                                                                                                                                                                                console.log("");
-                                                                                                                                                                                                                                                                                                  console.log("REALIZED PNL");
-                                                                                                                                                                                                                                                                                                    console.log("------------");
+  const sortedPositions = [...positions.values()].sort(
+    (a, b) => Math.abs(b.realizedPnl) - Math.abs(a.realizedPnl)
+  );
 
-                                                                                                                                                                                                                                                                                                      console.log(
-                                                                                                                                                                                                                                                                                                          "Realized PnL:",
-                                                                                                                                                                                                                                                                                                              totalRealizedPnl.toFixed(6),
-                                                                                                                                                                                                                                                                                                                  "SOL"
-                                                                                                                                                                                                                                                                                                                    );
+  sortedPositions.slice(0, 10).forEach((position, index) => {
+    console.log("");
+    console.log(`#${index + 1}`);
+    console.log("Token:", position.mint);
+    console.log("Trades:", position.trades);
+    console.log("Tokens bought:", position.tokensBought);
+    console.log("Tokens sold:", position.tokensSold);
+    console.log("Tokens remaining:", position.tokensRemaining);
+    console.log("SOL spent:", position.solSpent.toFixed(6));
+    console.log("SOL received:", position.solReceived.toFixed(6));
+    console.log(
+      "Realized PnL:",
+      position.realizedPnl.toFixed(6),
+      "SOL"
+    );
+  });
 
-                                                                                                                                                                                                                                                                                                                      console.log("");
-                                                                                                                                                                                                                                                                                                                        console.log("POSITIONS");
-                                                                                                                                                                                                                                                                                                                          console.log("---------");
-
-                                                                                                                                                                                                                                                                                                                            const sortedPositions =
-                                                                                                                                                                                                                                                                                                                                [...positions.values()]
-                                                                                                                                                                                                                                                                                                                                      .sort(
-                                                                                                                                                                                                                                                                                                                                              (a, b) =>
-                                                                                                                                                                                                                                                                                                                                                        Math.abs(b.realizedPnl) -
-                                                                                                                                                                                                                                                                                                                                                                  Math.abs(a.realizedPnl)
-                                                                                                                                                                                                                                                                                                                                                                        );
-
-                                                                                                                                                                                                                                                                                                                                                                          sortedPositions
-                                                                                                                                                                                                                                                                                                                                                                              .slice(0, 10)
-                                                                                                                                                                                                                                                                                                                                                                                  .forEach((position, index) => {
-                                                                                                                                                                                                                                                                                                                                                                                        console.log("");
-                                                                                                                                                                                                                                                                                                                                                                                              console.log(
-                                                                                                                                                                                                                                                                                                                                                                                                      `${index + 1}. ${position.mint}`
-                                                                                                                                                                                                                                                                                                                                                                                                            );
-
-                                                                                                                                                                                                                                                                                                                                                                                                                  console.log(
-                                                                                                                                                                                                                                                                                                                                                                                                                          "Buys:",
-                                                                                                                                                                                                                                                                                                                                                                                                                                  position.buys
-                                                                                                                                                                                                                                                                                                                                                                                                                                        );
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                              console.log(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                      "Sells:",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                              position.sells
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                    );
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                          console.log(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  "Tokens bought:",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          position.tokensBought
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                );
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      console.log(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              "Tokens sold:",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      position.tokensSold
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            );
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  console.log(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "Tokens remaining:",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  position.tokensRemaining
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        );
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              console.log(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "SOL spent:",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              position.solSpent.toFixed(6)
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    );
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          console.log(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  "SOL received:",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          position.solReceived.toFixed(6)
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                );
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      console.log(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              "Realized PnL:",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      position.realizedPnl.toFixed(6),
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              "SOL"
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    );
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        });
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          console.log("");
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            console.log("========================");
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              console.log("MONFLUXO ANALYSIS COMPLETE");
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                console.log("========================");
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                } catch (error) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  console.error(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      "Error:",
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          error.message
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            );
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              process.exit(1);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              }
+  console.log("");
+  console.log("========================");
+  console.log("MONFLUXO ANALYSIS COMPLETE");
+  console.log("========================");
+} catch (error) {
+  console.error("Error:", error.message);
+  process.exit(1);
+}
