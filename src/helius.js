@@ -7,7 +7,7 @@ if (!HELIUS_API_KEY) {
   const HELIUS_RPC_URL =
     `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
-    export async function getTransactionsForAddress(address, limit = 10) {
+    async function heliusRequest(method, params, id) {
       const response = await fetch(HELIUS_RPC_URL, {
           method: "POST",
               headers: {
@@ -15,9 +15,9 @@ if (!HELIUS_API_KEY) {
                         },
                             body: JSON.stringify({
                                   jsonrpc: "2.0",
-                                        id: "monfluxo",
-                                              method: "getTransactionsForAddress",
-                                                    params: [address, { limit }]
+                                        id,
+                                              method,
+                                                    params
                                                         })
                                                           });
 
@@ -28,8 +28,34 @@ if (!HELIUS_API_KEY) {
                                                                     const data = await response.json();
 
                                                                       if (data.error) {
-                                                                          throw new Error(data.error.message || "Helius API error");
-                                                                            }
+                                                                          throw new Error(
+                                                                                data.error.message || "Helius API error"
+                                                                                    );
+                                                                                      }
 
-                                                                              return data.result;
-                                                                              }
+                                                                                        return data.result;
+                                                                                        }
+
+                                                                                        export async function getTransactionsForAddress(
+                                                                                          address,
+                                                                                            paginationToken = null
+                                                                                            ) {
+                                                                                              const options = {
+                                                                                                  transactionDetails: "full",
+                                                                                                      limit: 100,
+                                                                                                          sortOrder: "desc"
+                                                                                                            };
+
+                                                                                                              if (paginationToken) {
+                                                                                                                  options.paginationToken = paginationToken;
+                                                                                                                    }
+
+                                                                                                                      return await heliusRequest(
+                                                                                                                          "getTransactionsForAddress",
+                                                                                                                              [
+                                                                                                                                    address,
+                                                                                                                                          options
+                                                                                                                                              ],
+                                                                                                                                                  "monfluxo-history"
+                                                                                                                                                    );
+                                                                                                                                                    }
