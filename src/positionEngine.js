@@ -1,118 +1,101 @@
+const EPSILON = 0.000000001;
+
 export function buildPositions(trades) {
-      const positions = new Map();
+  const positions = new Map();
 
-        for (const trade of trades) {
-            const mint = trade.tokenMint;
+  for (const trade of trades) {
+    if (
+      !trade ||
+      !trade.tokenMint ||
+      !Number.isFinite(trade.tokenAmount) ||
+      !Number.isFinite(trade.solAmount) ||
+      trade.tokenAmount <= 0 ||
+      trade.solAmount < 0
+    ) {
+      continue;
+    }
 
-                if (!positions.has(mint)) {
-                      positions.set(mint, {
-                              mint,
-                                      buys: 0,
-                                              sells: 0,
-                                                      tokensBought: 0,
-                                                              tokensSold: 0,
-                                                                      tokensRemaining: 0,
-                                                                              solSpent: 0,
-                                                                                      solReceived: 0,
-                                                                                              realizedPnl: 0,
-                                                                                                      lots: []
-                                                                                                            });
-                                                                                                                }
+    const mint = trade.tokenMint;
 
-                                                                                                                    const position = positions.get(mint);
+    if (!positions.has(mint)) {
+      positions.set(mint, {
+        mint,
+        buys: 0,
+        sells: 0,
+        tokensBought: 0,
+        tokensSold: 0,
+        tokensRemaining: 0,
+        solSpent: 0,
+        solReceived: 0,
+        realizedPnl: 0,
+        lots: []
+      });
+    }
 
-                                                                                                                        if (trade.type === "BUY") {
-                                                                                                                              position.buys++;
+    const position = positions.get(mint);
 
-                                                                                                                                    position.tokensBought +=
-                                                                                                                                            trade.tokenAmount;
+    if (trade.type === "BUY") {
+      position.buys++;
+      position.tokensBought += trade.tokenAmount;
+      position.solSpent += trade.solAmount;
 
-                                                                                                                                                  position.solSpent +=
-                                                                                                                                                          trade.solAmount;
+      position.lots.push({
+        tokens: trade.tokenAmount,
+        costSol: trade.solAmount,
+        priceSol: trade.estimatedPriceSol,
+        signature: trade.signature,
+        blockTime: trade.blockTime
+      });
+      continue;
+    }
 
-                                                                                                                                                                position.lots.push({
-                                                                                                                                                                        tokens:
-                                                                                                                                                                                  trade.tokenAmount,
+    if (trade.type !== "SELL") continue;
 
-                                                                                                                                                                                          costSol:
-                                                                                                                                                                                                    trade.solAmount,
+    position.sells++;
+    position.tokensSold += trade.tokenAmount;
+    position.solReceived += trade.solAmount;
 
-                                                                                                                                                                                                            priceSol:
-                                                                                                                                                                                                                      trade.estimatedPriceSol
-                                                                                                                                                                                                                            });
-                                                                                                                                                                                                                                }
+    let remainingToSell = trade.tokenAmount;
+    let costOfSoldTokens = 0;
 
-                                                                                                                                                                                                                                    if (trade.type === "SELL") {
-                                                                                                                                                                                                                                          position.sells++;
+    while (remainingToSell > EPSILON && position.lots.length > 0) {
+      const lot = position.lots[0];
+      const tokensFromLot = Math.min(remainingToSell, lot.tokens);
+      const costPerToken = lot.costSol / lot.tokens;
+      const cost = tokensFromLot * costPerToken;
 
-                                                                                                                                                                                                                                                position.tokensSold +=
-                                                                                                                                                                                                                                                        trade.tokenAmount;
+      costOfSoldTokens += cost;
+      lot.tokens -= tokensFromLot;
+      lot.costSol -= cost;
+      remainingToSell -= tokensFromLot;
 
-                                                                                                                                                                                                                                                              position.solReceived +=
-                                                                                                                                                                                                                                                                      trade.solAmount;
+      if (lot.tokens <= EPSILON) {
+        position.lots.shift();
+      }
+    }
 
-                                                                                                                                                                                                                                                                            let remainingToSell =
-                                                                                                                                                                                                                                                                                    trade.tokenAmount;
+    // If a sell exceeds the inventory reconstructed from BUYs, do not
+    // manufacture cost basis. Track the unmatched quantity explicitly.
+    if (remainingToSell > EPSILON) {
+      position.unmatchedSoldTokens =
+        (position.unmatchedSoldTokens || 0) + remainingToSell;
+    }
 
-                                                                                                                                                                                                                                                                                          let costOfSoldTokens = 0;
+    position.realizedPnl += trade.solAmount - costOfSoldTokens;
+  }
 
-                                                                                                                                                                                                                                                                                                while (
-                                                                                                                                                                                                                                                                                                        remainingToSell > 0 &&
-                                                                                                                                                                                                                                                                                                                position.lots.length > 0
-                                                                                                                                                                                                                                                                                                                      ) {
-                                                                                                                                                                                                                                                                                                                              const lot =
-                                                                                                                                                                                                                                                                                                                                        position.lots[0];
+  for (const position of positions.values()) {
+    position.tokensRemaining = position.lots.reduce(
+      (total, lot) => total + lot.tokens,
+      0
+    );
 
-                                                                                                                                                                                                                                                                                                                                                const tokensFromLot =
-                                                                                                                                                                                                                                                                                                                                                          Math.min(
-                                                                                                                                                                                                                                                                                                                                                                      remainingToSell,
-                                                                                                                                                                                                                                                                                                                                                                                  lot.tokens
-                                                                                                                                                                                                                                                                                                                                                                                            );
+    delete position.lots;
 
-                                                                                                                                                                                                                                                                                                                                                                                                    const costPerToken =
-                                                                                                                                                                                                                                                                                                                                                                                                              lot.costSol / lot.tokens;
+    if (!position.unmatchedSoldTokens) {
+      delete position.unmatchedSoldTokens;
+    }
+  }
 
-                                                                                                                                                                                                                                                                                                                                                                                                                      const cost =
-                                                                                                                                                                                                                                                                                                                                                                                                                                tokensFromLot *
-                                                                                                                                                                                                                                                                                                                                                                                                                                          costPerToken;
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                  costOfSoldTokens += cost;
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                          lot.tokens -=
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                    tokensFromLot;
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                            lot.costSol -=
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      cost;
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              remainingToSell -=
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        tokensFromLot;
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                if (lot.tokens <= 0.000000001) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          position.lots.shift();
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        }
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              const realizedPnl =
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      trade.solAmount -
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              costOfSoldTokens;
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    position.realizedPnl +=
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            realizedPnl;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  }
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    for (const position of positions.values()) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        let tokensRemaining = 0;
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            for (const lot of position.lots) {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  tokensRemaining += lot.tokens;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      }
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          position.tokensRemaining =
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                tokensRemaining;
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    delete position.lots;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      }
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        return positions;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        }
+  return positions;
+}
