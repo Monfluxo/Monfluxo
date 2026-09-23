@@ -126,12 +126,14 @@ function getSplTransfers(transaction) {
             parsed?.type === "transferChecked") &&
           info?.source &&
           info?.destination &&
-          info?.amount != null
+          (info?.amount != null || info?.tokenAmount?.amount != null)
         ) {
           transfers.push({
             source: info.source,
             destination: info.destination,
-            rawAmount: String(info.amount),
+            rawAmount: String(
+              info.amount ?? info.tokenAmount.amount
+            ),
             mint: null,
             parentIndex: group.index
           });
@@ -282,14 +284,45 @@ export function parseSwapTransaction(transaction, wallet) {
   const nonWsolInputs = inputs.filter(([mint]) => mint !== WSOL_MINT);
   const nonWsolOutputs = outputs.filter(([mint]) => mint !== WSOL_MINT);
 
-  if (wsolInput && nonWsolOutputs.length === 1) {
-    const [outputMint, outputRaw] = nonWsolOutputs[0];
+  // For temporary WSOL accounts, account-level metadata can disappear
+  // from pre/post token balances after the account is closed. When that
+  // happens, use the wallet's actual token delta plus the observed SPL
+  // transfer as a conservative Raydium fallback.
+  const walletNonWsolChanges = [...walletChanges.values()].filter(
+    (change) => change.mint !== WSOL_MINT
+  );
+
+  const fallbackTokenIn = walletNonWsolChanges.filter(
+    (change) => BigInt(change.rawChange) > 0n
+  );
+  const fallbackTokenOut = walletNonWsolChanges.filter(
+    (change) => BigInt(change.rawChange) < 0n
+  );
+
+  const fallbackWsolInput = inputs
+    .filter(([mint]) => mint === WSOL_MINT)
+    .reduce((sum, [, raw]) => sum + raw, 0n);
+
+  if (
+    (wsolInput && nonWsolOutputs.length === 1) ||
+    (fallbackWsolInput > 0n && fallbackTokenIn.length === 1)
+  ) {
+    const effectiveWsolInput = wsolInput
+      ? wsolInput[1]
+      : fallbackWsolInput;
+    const effectiveOutput = wsolInput && nonWsolOutputs.length === 1
+      ? nonWsolOutputs[0]
+      : [
+          fallbackTokenIn[0].mint,
+          BigInt(fallbackTokenIn[0].rawChange)
+        ];
+    const [outputMint, outputRaw] = effectiveOutput;
     const outputDecimals = getMintDecimals(
       transaction,
       outputMint,
       tokenAccountMap
     );
-    const inputRaw = wsolInput[1];
+    const inputRaw = effectiveWsolInput;
     const inputDecimals = getMintDecimals(
       transaction,
       WSOL_MINT,
