@@ -1,0 +1,521 @@
+# MONFLUXO — Architecture
+
+## 1. Overview
+
+MONFLUXO is an on-chain intelligence platform designed to transform blockchain activity into actionable, structured intelligence.
+
+The initial version of MONFLUXO will focus on Solana.
+
+The platform will analyze wallets, tokens, transactions, capital flows and relationships between on-chain entities.
+
+The long-term objective is to build an intelligence layer capable of identifying patterns that are difficult to discover by looking at raw blockchain data alone.
+
+---
+
+## 2. Core Philosophy
+
+MONFLUXO separates raw blockchain data from interpretation.
+
+The fundamental data flow is:
+
+Blockchain Data
+↓
+Data Ingestion
+↓
+Normalization
+↓
+Analytics Engine
+↓
+Intelligence Layer
+↓
+AI Interpretation
+↓
+MONFLUXO Application
+
+The system should prioritize deterministic, reproducible calculations.
+
+AI should interpret structured data rather than replace the underlying analytics.
+
+---
+
+## 3. Initial Scope
+
+The first version will focus on five core capabilities:
+
+1. Wallet analysis
+2. Token analysis
+3. Trade reconstruction
+4. Profit and loss calculation
+5. Wallet and capital-flow relationships
+
+Additional capabilities such as real-time monitoring, alerts, behavioral clustering and multi-chain support will be built on top of this foundation.
+
+---
+
+# 4. System Architecture
+
+## 4.1 Data Layer
+
+The Data Layer is responsible for obtaining blockchain information.
+
+### Initial blockchain
+
+* Solana
+
+### Primary data sources
+
+* Helius
+* Solana RPC
+* Jito infrastructure where required
+
+External providers are data sources, not the intelligence layer itself.
+
+MONFLUXO should normalize external data into its own internal data model whenever practical.
+
+---
+
+## 4.2 Ingestion Layer
+
+The Ingestion Layer retrieves and processes blockchain data.
+
+It will handle:
+
+* Transactions
+* Instructions
+* Token transfers
+* SOL transfers
+* Token balances
+* Account activity
+* Swap activity
+* Program interactions
+* Real-time events
+
+The ingestion system should support both:
+
+### Historical data
+
+Used for:
+
+* Wallet history
+* Historical token activity
+* PnL calculations
+* Behavioral analysis
+* Backtesting
+
+### Real-time data
+
+Used for:
+
+* Wallet monitoring
+* Token monitoring
+* Capital-flow detection
+* Alerts
+* MONFLUXO Radar
+
+---
+
+# 5. Analytics Engine
+
+The Analytics Engine is the core of MONFLUXO.
+
+Raw blockchain transactions should be transformed into structured financial and behavioral information.
+
+## 5.1 Wallet Engine
+
+The Wallet Engine will calculate and maintain information such as:
+
+* Wallet age
+* Transaction count
+* Trading activity
+* Total volume
+* SOL balance
+* Token balances
+* Historical activity
+* Capital inflows
+* Capital outflows
+* Trading frequency
+* Average position size
+* Holding periods
+* Win rate
+* Realized PnL
+* Unrealized PnL
+* ROI
+* Best trades
+* Worst trades
+
+---
+
+## 5.2 Token Engine
+
+The Token Engine will analyze:
+
+* Token activity
+* Holders
+* Buyers
+* Sellers
+* Volume
+* Liquidity
+* Market activity
+* Wallet concentration
+* Capital inflows
+* Capital outflows
+* Early buyers
+* Top-performing holders
+* New wallets
+* Smart-wallet activity
+
+The system should support token-specific analysis across different stages of a token's lifecycle.
+
+---
+
+## 5.3 Trade Reconstruction
+
+Blockchain transactions do not directly represent a clean trading history.
+
+MONFLUXO will reconstruct trades from raw on-chain activity.
+
+The system should identify:
+
+* Entry
+* Exit
+* Entry price
+* Exit price
+* Position size
+* Partial buys
+* Partial sells
+* Average entry
+* Average exit
+* Holding duration
+* Realized PnL
+* Unrealized PnL
+
+The reconstruction engine must account for complex wallet behavior including multiple transactions, transfers and partial positions.
+
+---
+
+## 5.4 PnL Engine
+
+The PnL Engine converts reconstructed trades into financial performance metrics.
+
+It should support:
+
+* Realized PnL
+* Unrealized PnL
+* ROI
+* Win rate
+* Average winning trade
+* Average losing trade
+* Largest winning trade
+* Largest losing trade
+* Cumulative PnL
+
+PnL calculations must be deterministic and reproducible.
+
+---
+
+# 6. Capital Flow Engine
+
+MONFLUXO will track movement of capital between wallets and tokens.
+
+Examples include:
+
+Wallet A
+↓
+Wallet B
+↓
+Token X
+
+or:
+
+Wallet A
+↓
+Token X
+↓
+Wallet C
+
+The Capital Flow Engine will be used to identify:
+
+* Funding relationships
+* Capital concentration
+* Wallet clusters
+* Repeated counterparties
+* Significant inflows
+* Significant outflows
+* Movement of capital between related wallets
+
+A blockchain connection should not automatically be interpreted as common ownership.
+
+MONFLUXO will distinguish between:
+
+### Observed
+
+Directly verifiable on-chain activity.
+
+### Inferred
+
+A relationship suggested by multiple signals.
+
+---
+
+# 7. Wallet Relationship Graph
+
+MONFLUXO will eventually represent blockchain entities as a graph.
+
+Nodes may include:
+
+* Wallets
+* Tokens
+* Transactions
+* Programs
+* Pools
+
+Edges may include:
+
+* Funded
+* Transferred to
+* Bought
+* Sold
+* Interacted with
+* Shared counterparties
+
+The graph will allow MONFLUXO to identify relationships that are difficult to discover through isolated wallet analysis.
+
+---
+
+# 8. Intelligence Layer
+
+The Intelligence Layer transforms analytics into higher-level signals.
+
+Potential signals include:
+
+### Smart Wallet Detection
+
+Identify wallets based on historical performance and behavioral characteristics.
+
+Signals may include:
+
+* Consistent profitability
+* Early entries
+* High-quality trade history
+* Risk-adjusted performance
+* Historical success in similar tokens
+
+### Behavioral Patterns
+
+Examples:
+
+* Accumulation
+* Distribution
+* Early buying
+* Coordinated activity
+* Rapid rotation
+* Large capital movement
+* Repeated interaction patterns
+
+### Anomaly Detection
+
+MONFLUXO may identify unusual activity such as:
+
+* Sudden capital inflows
+* Unusual wallet concentration
+* Abnormal trading activity
+* Multiple related wallets becoming active
+* Significant changes in holder behavior
+
+These signals are analytical indicators, not guaranteed predictions.
+
+---
+
+# 9. Real-Time Radar
+
+MONFLUXO Radar will monitor blockchain activity in real time.
+
+Potential events include:
+
+* Significant wallet entries
+* Significant wallet exits
+* Smart-wallet activity
+* Large capital movements
+* Unusual token activity
+* Wallet clusters becoming active
+* Relevant bundle activity
+
+Example:
+
+> 5 historically profitable wallets accumulated Token X within 90 seconds.
+
+The Radar should expose the underlying evidence supporting every signal.
+
+---
+
+# 10. AI Layer
+
+The AI Layer will sit above the Analytics and Intelligence Layers.
+
+Its purpose is interpretation and communication.
+
+The AI should receive structured MONFLUXO data and generate explanations such as:
+
+* Why is this token receiving attention?
+* What changed recently?
+* Which wallets are driving the activity?
+* What are the major capital flows?
+* Are there unusual wallet relationships?
+* What historical behavior is relevant?
+
+The AI must not be the source of raw blockchain facts.
+
+The underlying analytics remain the source of truth.
+
+---
+
+# 11. Application Layer
+
+The initial application will eventually contain:
+
+## Token Explorer
+
+Analyze a token through its contract address.
+
+Example:
+
+`CA → Token Intelligence`
+
+---
+
+## Wallet Explorer
+
+Analyze a wallet address.
+
+Example:
+
+`Wallet → Wallet Intelligence`
+
+---
+
+## Radar
+
+Monitor relevant on-chain events in real time.
+
+---
+
+## Alerts
+
+Notify users when predefined signals occur.
+
+---
+
+## MONFLUXO Analyst
+
+Allow users to ask questions about the analyzed data using natural language.
+
+---
+
+# 12. Data Integrity
+
+MONFLUXO should clearly distinguish between:
+
+### On-chain facts
+
+Directly observable blockchain activity.
+
+### Calculated metrics
+
+Metrics derived deterministically from blockchain data.
+
+### Heuristics
+
+Signals derived from multiple observed metrics.
+
+### AI interpretation
+
+Natural-language explanations generated from structured data.
+
+These categories should never be presented as equivalent.
+
+---
+
+# 13. Privacy and Attribution
+
+Wallet addresses are public blockchain identifiers.
+
+However, MONFLUXO should not claim to know the real-world identity or ownership of a wallet unless independently verified evidence exists.
+
+Statements about wallet relationships should be presented as:
+
+* Observed relationship
+* Probable relationship
+* Strong correlation
+* Heuristic signal
+
+rather than definitive ownership claims.
+
+---
+
+# 14. Development Strategy
+
+MONFLUXO will be developed incrementally.
+
+### Phase 1 — Foundation
+
+* Repository
+* Architecture
+* Data model
+* Environment configuration
+* Solana connection
+* Helius integration
+
+### Phase 2 — Wallet Intelligence
+
+* Historical wallet retrieval
+* Transaction normalization
+* Trade reconstruction
+* PnL engine
+* Wallet profile
+
+### Phase 3 — Token Intelligence
+
+* Token analysis
+* Holder analysis
+* Buyer/seller analysis
+* Capital flows
+* Smart-wallet detection
+
+### Phase 4 — Relationships
+
+* Wallet graph
+* Funding relationships
+* Wallet clustering
+* Behavioral signals
+
+### Phase 5 — Real-Time
+
+* Event streams
+* Radar
+* Alerts
+* Real-time intelligence
+
+### Phase 6 — AI
+
+* MONFLUXO Analyst
+* Natural-language analysis
+* Automated explanations
+
+### Phase 7 — Expansion
+
+* Multi-chain support
+* Advanced intelligence
+* Historical backtesting
+* Additional data providers
+
+---
+
+# 15. Guiding Principle
+
+MONFLUXO should not simply display blockchain data.
+
+It should answer:
+
+> **What is happening, who is involved, how capital is moving, and why it matters.**
+
+The objective is to transform raw on-chain activity into structured intelligence.
