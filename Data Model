@@ -1,0 +1,523 @@
+# MONFLUXO — Data Model
+
+## 1. Purpose
+
+This document defines the core data structures used by MONFLUXO.
+
+The data model is designed to transform raw blockchain activity into structured entities that can be analyzed consistently across the platform.
+
+The initial implementation focuses on Solana.
+
+---
+
+# 2. Core Entities
+
+MONFLUXO will initially work with the following core entities:
+
+* Wallet
+* Token
+* Transaction
+* Transfer
+* Swap
+* Trade
+* Position
+* PnL
+* Capital Flow
+* Wallet Relationship
+* Signal
+
+These entities should remain conceptually independent even when they are derived from the same blockchain transactions.
+
+---
+
+# 3. Wallet
+
+A Wallet represents a Solana address that interacts with the blockchain.
+
+### Core fields
+
+```text
+Wallet
+├── address
+├── first_seen
+├── last_seen
+├── created_at
+├── transaction_count
+├── sol_balance
+├── token_count
+├── total_volume
+├── realized_pnl
+├── unrealized_pnl
+├── roi
+├── win_rate
+└── classification
+```
+
+### Classification
+
+A wallet may receive one or more analytical classifications.
+
+Examples:
+
+* New Wallet
+* Fresh Wallet
+* Active Trader
+* High Volume
+* Profitable Trader
+* Smart Wallet
+* Whale
+
+Classifications are calculated by MONFLUXO and should not be treated as permanent identity attributes.
+
+---
+
+# 4. Token
+
+A Token represents a fungible token identified by its mint address.
+
+### Core fields
+
+```text
+Token
+├── mint
+├── symbol
+├── name
+├── decimals
+├── first_seen
+├── liquidity
+├── volume
+├── holders
+├── buyers
+├── sellers
+├── market_cap
+├── price
+└── metadata
+```
+
+Some fields may depend on external market-data providers.
+
+The blockchain remains the source of truth for token ownership and transaction activity.
+
+---
+
+# 5. Transaction
+
+A Transaction represents an on-chain Solana transaction.
+
+### Core fields
+
+```text
+Transaction
+├── signature
+├── slot
+├── block_time
+├── fee
+├── fee_payer
+├── accounts
+├── instructions
+├── programs
+├── success
+└── raw_data
+```
+
+The raw transaction should be preserved whenever practical.
+
+Normalized entities should be derived from the transaction rather than replacing it.
+
+---
+
+# 6. Transfer
+
+A Transfer represents the movement of an asset between addresses.
+
+### Core fields
+
+```text
+Transfer
+├── transaction
+├── timestamp
+├── from
+├── to
+├── asset
+├── amount
+├── usd_value
+└── transfer_type
+```
+
+Possible transfer types include:
+
+* SOL
+* SPL Token
+* NFT
+* Internal transfer
+
+Transfers are important for identifying capital flows and wallet relationships.
+
+---
+
+# 7. Swap
+
+A Swap represents a token exchange.
+
+### Core fields
+
+```text
+Swap
+├── transaction
+├── wallet
+├── timestamp
+├── input_asset
+├── input_amount
+├── output_asset
+├── output_amount
+├── input_value_usd
+├── output_value_usd
+├── price
+├── dex
+└── pool
+```
+
+A Swap is a low-level trading event.
+
+A Swap does not necessarily represent a complete trade.
+
+---
+
+# 8. Trade
+
+A Trade represents a logical trading action reconstructed from one or more swaps.
+
+Example:
+
+```text
+BUY
+Wallet A
+Token X
+$2,000
+```
+
+or:
+
+```text
+SELL
+Wallet A
+Token X
+$3,500
+```
+
+### Core fields
+
+```text
+Trade
+├── id
+├── wallet
+├── token
+├── side
+├── timestamp
+├── amount
+├── price
+├── usd_value
+├── transaction_ids
+└── confidence
+```
+
+Possible sides:
+
+* BUY
+* SELL
+
+The Trade entity is derived by MONFLUXO.
+
+---
+
+# 9. Position
+
+A Position represents a wallet's exposure to a token over time.
+
+### Core fields
+
+```text
+Position
+├── wallet
+├── token
+├── opened_at
+├── closed_at
+├── quantity
+├── average_entry_price
+├── average_exit_price
+├── invested_value
+├── realized_value
+├── unrealized_value
+└── status
+```
+
+Possible statuses:
+
+* OPEN
+* CLOSED
+* PARTIAL
+
+Positions may consist of multiple trades.
+
+---
+
+# 10. PnL
+
+PnL represents the calculated financial performance of a position or wallet.
+
+### Core fields
+
+```text
+PnL
+├── realized
+├── unrealized
+├── total
+├── roi
+├── cost_basis
+├── proceeds
+└── calculation_method
+```
+
+MONFLUXO should explicitly store or expose the calculation methodology used.
+
+PnL calculations must be deterministic.
+
+---
+
+# 11. Capital Flow
+
+A Capital Flow represents movement of capital between wallets, tokens or other entities.
+
+### Core fields
+
+```text
+CapitalFlow
+├── id
+├── timestamp
+├── source
+├── destination
+├── asset
+├── amount
+├── usd_value
+├── transaction
+└── confidence
+```
+
+Capital flows may represent:
+
+* Wallet funding
+* Wallet-to-wallet transfers
+* Token accumulation
+* Token distribution
+* Large capital movements
+
+---
+
+# 12. Wallet Relationship
+
+A Wallet Relationship represents an observed or inferred relationship between two wallets.
+
+### Core fields
+
+```text
+WalletRelationship
+├── wallet_a
+├── wallet_b
+├── relationship_type
+├── first_seen
+├── last_seen
+├── interaction_count
+├── total_value
+├── evidence
+└── confidence
+```
+
+Possible relationship types:
+
+* FUNDED
+* TRANSFERRED
+* SHARED_COUNTERPARTY
+* SHARED_TOKEN
+* TEMPORAL_CORRELATION
+* POSSIBLE_CLUSTER
+
+Relationships must distinguish between directly observed activity and analytical inference.
+
+---
+
+# 13. Signal
+
+A Signal represents an analytical event detected by MONFLUXO.
+
+### Core fields
+
+```text
+Signal
+├── id
+├── timestamp
+├── type
+├── entity
+├── severity
+├── confidence
+├── evidence
+└── explanation
+```
+
+Possible signal types:
+
+* SMART_WALLET_ENTRY
+* SMART_WALLET_EXIT
+* LARGE_CAPITAL_FLOW
+* WALLET_CLUSTER_ACTIVITY
+* UNUSUAL_ACTIVITY
+* HOLDER_CONCENTRATION
+* ACCUMULATION
+* DISTRIBUTION
+* BUNDLE_ACTIVITY
+
+A Signal is an analytical output, not raw blockchain data.
+
+---
+
+# 14. Data Hierarchy
+
+MONFLUXO should maintain a clear hierarchy between raw data and interpretation.
+
+```text
+RAW
+│
+├── Transaction
+├── Transfer
+└── Swap
+       │
+       ↓
+DERIVED
+│
+├── Trade
+├── Position
+├── PnL
+└── Capital Flow
+       │
+       ↓
+ANALYTICS
+│
+├── Wallet Profile
+├── Token Profile
+├── Wallet Relationships
+└── Behavioral Metrics
+       │
+       ↓
+INTELLIGENCE
+│
+└── Signals
+       │
+       ↓
+AI INTERPRETATION
+```
+
+This hierarchy is fundamental to MONFLUXO.
+
+---
+
+# 15. Source of Truth
+
+MONFLUXO should distinguish between different sources of information.
+
+### Blockchain
+
+Source of truth for:
+
+* Transactions
+* Transfers
+* Token ownership
+* Wallet activity
+* On-chain balances
+
+### External Data Providers
+
+May provide:
+
+* Market prices
+* Liquidity
+* Token metadata
+* Market capitalization
+* Historical market data
+
+### MONFLUXO Analytics
+
+Source of truth for:
+
+* Trade reconstruction
+* PnL calculations
+* Wallet classifications
+* Behavioral metrics
+* Relationships
+* Signals
+
+### AI
+
+Not a source of truth.
+
+AI should only interpret structured data produced by MONFLUXO.
+
+---
+
+# 16. Confidence
+
+Analytical entities may include a confidence score.
+
+Confidence should represent the quality and strength of the evidence supporting an analytical conclusion.
+
+Confidence must not be confused with certainty.
+
+For example:
+
+```text
+Observed transfer
+Confidence: 100%
+
+Probable wallet relationship
+Confidence: 87%
+
+Behavioral similarity
+Confidence: 72%
+```
+
+The exact scoring methodology will be defined later.
+
+---
+
+# 17. Historical Data
+
+MONFLUXO should preserve historical information whenever possible.
+
+Historical data is required for:
+
+* Wallet performance analysis
+* PnL
+* Smart-wallet detection
+* Behavioral analysis
+* Backtesting
+* Wallet relationships
+
+The system should avoid relying exclusively on current wallet balances.
+
+Historical events are fundamental to MONFLUXO intelligence.
+
+---
+
+# 18. Future Expansion
+
+The data model should eventually support additional chains.
+
+The initial implementation is Solana-specific, but the conceptual entities should remain as chain-agnostic as possible.
+
+Future fields may include:
+
+```text
+chain
+network
+protocol
+```
+
+This will allow MONFLUXO to expand beyond Solana without redesigning the entire analytics architecture.
