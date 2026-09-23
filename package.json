@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/index.js"
+      "start": "node --env-file=.env src/index.js"
+      }
   }
-}
