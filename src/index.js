@@ -1,4 +1,4 @@
-import { getTransactionsForAddress } from "./helius.js";
+import { getTransactionsForAddress, getTransaction } from "./helius.js";
 import { parseTransaction } from "./parser.js";
 import { buildPositions } from "./positionEngine.js";
 
@@ -14,7 +14,146 @@ function formatTimestamp(blockTime) {
   return new Date(blockTime * 1000).toISOString();
 }
 
-function formatNumber(value, digits = 9) {
+function shorten(value, length = 44) {
+  if (!value) return value;
+  return value.length > length
+    ? `${value.slice(0, length)}...`
+    : value;
+}
+
+function printInstruction(label, instruction, index) {
+  const programId = instruction?.programId || instruction?.program || null;
+  const parsedType = instruction?.parsed?.type || null;
+  const program = instruction?.program || null;
+
+  console.log(
+    `${label} #${index + 1}: programId=${programId || "N/A"} program=${program || "N/A"} type=${parsedType || "N/A"}`
+  );
+
+  if (instruction?.parsed?.info) {
+    console.log(
+      `${label} #${index + 1} info:`,
+      JSON.stringify(instruction.parsed.info)
+    );
+  } else if (instruction?.data) {
+    console.log(
+      `${label} #${index + 1} data:`,
+      shorten(instruction.data, 120)
+    );
+  }
+}
+
+function printBalanceChanges(transaction, wallet) {
+  const meta = transaction?.meta || {};
+  const pre = meta.preTokenBalances || [];
+  const post = meta.postTokenBalances || [];
+
+  console.log("PRE SOL BALANCE (lamports):", JSON.stringify(meta.preBalances || []));
+  console.log("POST SOL BALANCE (lamports):", JSON.stringify(meta.postBalances || []));
+  console.log("FEE (lamports):", meta.fee ?? null);
+
+  console.log("PRE TOKEN BALANCES:");
+  for (const item of pre) {
+    if (item.owner === wallet) {
+      console.log(
+        JSON.stringify({
+          accountIndex: item.accountIndex,
+          mint: item.mint,
+          owner: item.owner,
+          amount: item.uiTokenAmount?.amount,
+          decimals: item.uiTokenAmount?.decimals,
+          uiAmount: item.uiTokenAmount?.uiAmount
+        })
+      );
+    }
+  }
+
+  console.log("POST TOKEN BALANCES:");
+  for (const item of post) {
+    if (item.owner === wallet) {
+      console.log(
+        JSON.stringify({
+          accountIndex: item.accountIndex,
+          mint: item.mint,
+          owner: item.owner,
+          amount: item.uiTokenAmount?.amount,
+          decimals: item.uiTokenAmount?.decimals,
+          uiAmount: item.uiTokenAmount?.uiAmount
+        })
+      );
+    }
+  }
+}
+
+async function debugTransaction(signature, wallet) {
+  console.log("");
+  console.log("============================================================");
+  console.log("TRANSACTION DEBUG");
+  console.log("============================================================");
+  console.log("Signature:", signature);
+
+  const transaction = await getTransaction(signature);
+
+  if (!transaction) {
+    console.log("Transaction not found.");
+    return;
+  }
+
+  console.log("Block time:", formatTimestamp(transaction.blockTime));
+  console.log("Slot:", transaction.slot ?? "N/A");
+  console.log("Version:", transaction.transaction?.version ?? "legacy");
+
+  const message = transaction.transaction?.message || {};
+  const accountKeys = message.accountKeys || [];
+
+  console.log("");
+  console.log("ACCOUNT KEYS");
+  accountKeys.forEach((key, index) => {
+    const pubkey = typeof key === "string" ? key : key?.pubkey;
+    console.log(
+      `#${index}: ${pubkey || "N/A"} signer=${Boolean(key?.signer)} writable=${Boolean(key?.writable)}`
+    );
+  });
+
+  console.log("");
+  console.log("OUTER INSTRUCTIONS");
+  const instructions = message.instructions || [];
+  if (instructions.length === 0) {
+    console.log("None");
+  } else {
+    instructions.forEach((instruction, index) => {
+      printInstruction("OUTER", instruction, index);
+    });
+  }
+
+  console.log("");
+  console.log("INNER INSTRUCTIONS");
+  const inner = transaction.meta?.innerInstructions || [];
+  if (inner.length === 0) {
+    console.log("None");
+  } else {
+    inner.forEach((group) => {
+      console.log(`Parent instruction index: ${group.index}`);
+      (group.instructions || []).forEach((instruction, index) => {
+        printInstruction("INNER", instruction, index);
+      });
+    });
+  }
+
+  console.log("");
+  console.log("LOG MESSAGES");
+  const logs = transaction.meta?.logMessages || [];
+  if (logs.length === 0) {
+    console.log("None");
+  } else {
+    logs.forEach((log) => console.log(log));
+  }
+
+  console.log("");
+  console.log("WALLET BALANCES");
+  printBalanceChanges(transaction, wallet);
+}
+\nfunction formatNumber(value, digits = 9) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return String(value);
   }
@@ -201,6 +340,17 @@ try {
       console.log("Token changes:", JSON.stringify(trade.tokenChanges));
       console.log("SOL change:", JSON.stringify(trade.solChange));
     });
+  }
+
+  // Debug a few real swaps before trusting the trade parser. This inspects
+  // the actual instructions, inner instructions, logs and balance movements.
+  const debugSignatures = diagnosticTrades
+    .slice(0, 3)
+    .map((trade) => trade.signature)
+    .filter(Boolean);
+
+  for (const signature of debugSignatures) {
+    await debugTransaction(signature, wallet);
   }
 
   // Helius returns history newest -> oldest. The position engine must
