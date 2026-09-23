@@ -1,5 +1,6 @@
+import { parseSwapTransaction } from "./swapParser.js";
+
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
-const SOL_EPSILON = 0.000000001;
 const SOL_TRADE_EPSILON = 0.00001;
 
 function result(type, extra = {}) {
@@ -21,7 +22,9 @@ function getSignature(transaction) {
 }
 
 function getAccountKeyValue(key) {
-  return typeof key === "string" ? key : key?.pubkey || key?.address || null;
+  return typeof key === "string"
+    ? key
+    : key?.pubkey || key?.address || null;
 }
 
 function getTokenChanges(transaction, wallet) {
@@ -103,24 +106,14 @@ function getSolChange(transaction, wallet) {
   };
 }
 
-function buildTrade(transaction, wallet, type, tokenChange, solChange) {
-  const feeLamports = Number(transaction?.meta?.fee || 0);
-  const feeSol = feeLamports / 1e9;
+function buildLegacyTrade(transaction, wallet, type, tokenChange, solChange) {
+  const feeSol = Number(transaction?.meta?.fee || 0) / 1e9;
   const netSol = Math.abs(solChange.solChange);
-
-  // The wallet's native SOL balance includes transaction fees.
-  // For a SOL -> token buy, gross SOL spent = net balance decrease + fee.
-  // For a token -> SOL sell, gross SOL received = net balance increase + fee.
-  const grossSol =
-    type === "BUY"
-      ? netSol + feeSol
-      : netSol + feeSol;
+  const grossSol = netSol + feeSol;
 
   if (!Number.isFinite(grossSol) || grossSol <= SOL_TRADE_EPSILON) {
     return null;
   }
-
-  const estimatedPriceSol = grossSol / tokenChange.amount;
 
   return {
     wallet,
@@ -129,9 +122,10 @@ function buildTrade(transaction, wallet, type, tokenChange, solChange) {
     tokenAmount: tokenChange.amount,
     solAmount: grossSol,
     feeSol,
-    estimatedPriceSol,
+    estimatedPriceSol: grossSol / tokenChange.amount,
     signature: getSignature(transaction),
-    blockTime: transaction?.blockTime || null
+    blockTime: transaction?.blockTime || null,
+    parser: "legacy_balance"
   };
 }
 
@@ -140,6 +134,43 @@ export function parseTransaction(transaction, wallet) {
     return result("OTHER", { reason: "Missing transaction metadata" });
   }
 
+  // First use instruction-level swap extraction for supported DEXes.
+  // This avoids treating unrelated SOL movements (rent, transfers, fees)
+  // as part of the trade.
+  const swap = parseSwapTransaction(transaction, wallet);
+
+  if (swap) {
+    const tokenMint =
+      swap.type === "BUY" ? swap.outputMint : swap.inputMint;
+    const tokenAmount =
+      swap.type === "BUY" ? swap.outputAmount : swap.inputAmount;
+    const solAmount =
+      swap.type === "BUY" ? swap.inputAmount : swap.outputAmount;
+
+    return {
+      type: swap.type,
+      reason: "Instruction-level DEX swap",
+      tokenChanges: getTokenChanges(transaction, wallet),
+      solChange: getSolChange(transaction, wallet),
+      trade: {
+        wallet,
+        type: swap.type,
+        tokenMint,
+        tokenAmount,
+        solAmount,
+        feeSol: swap.feeSol,
+        estimatedPriceSol: swap.estimatedPriceSol,
+        signature: swap.signature,
+        blockTime: swap.blockTime,
+        dex: swap.dex,
+        parser: "instruction_swap"
+      }
+    };
+  }
+
+  // Temporary fallback for unsupported transaction types/DEXes.
+  // These trades are explicitly marked as legacy_balance so they are not
+  // mistaken for instruction-level accuracy.
   const tokenChanges = getTokenChanges(transaction, wallet);
   const solChange = getSolChange(transaction, wallet);
 
@@ -156,18 +187,28 @@ export function parseTransaction(transaction, wallet) {
   let type = "OTHER";
   let trade = null;
 
-  // Prototype scope: SOL-paired swaps. Ignore WSOL as the traded memecoin.
-  // A future USDC/USDT quote extractor will use token-token movements.
   if (tokenIn.length === 1 && meaningfulSol && solChange.direction === "OUT") {
     type = "BUY";
-    trade = buildTrade(transaction, wallet, type, tokenIn[0], solChange);
+    trade = buildLegacyTrade(
+      transaction,
+      wallet,
+      type,
+      tokenIn[0],
+      solChange
+    );
   } else if (
     tokenOut.length === 1 &&
     meaningfulSol &&
     solChange.direction === "IN"
   ) {
     type = "SELL";
-    trade = buildTrade(transaction, wallet, type, tokenOut[0], solChange);
+    trade = buildLegacyTrade(
+      transaction,
+      wallet,
+      type,
+      tokenOut[0],
+      solChange
+    );
   } else if (tokenIn.length > 0 && !meaningfulSol) {
     type = "TRANSFER_IN";
   } else if (tokenOut.length > 0 && !meaningfulSol) {
@@ -178,7 +219,9 @@ export function parseTransaction(transaction, wallet) {
 
   return {
     type,
-    reason: trade ? "SOL-paired token swap candidate" : "Balance movement classification",
+    reason: trade
+      ? "Legacy balance-based classification"
+      : "Balance movement classification",
     tokenChanges,
     solChange,
     trade
