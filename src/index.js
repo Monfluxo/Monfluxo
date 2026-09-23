@@ -296,6 +296,8 @@ try {
       tokenAmount: analysis.trade.tokenAmount,
       solAmount: analysis.trade.solAmount,
       estimatedPriceSol: analysis.trade.estimatedPriceSol,
+      parser: analysis.trade.parser || "unknown",
+      dex: analysis.trade.dex || null,
       tokenChanges: analysis.tokenChanges,
       solChange: analysis.solChange
     });
