@@ -246,6 +246,36 @@ try {
   console.log("Newest transaction:", formatTimestamp(newestBlockTime));
   console.log("Oldest transaction:", formatTimestamp(oldestBlockTime));
 
+  const TARGET_SIGNATURE = "3Vwt45aDB9ov9fceRsnhsvkkbd8iGUzNxumAHrXYcAwj43WHx57gwQ2E4caMUDAkhWzhGCV7ZvZtRHdF5VEQVn5";
+
+  const targetBeforeParser = allTransactions.find((transaction) => {
+    const signature =
+      transaction?.transaction?.signatures?.[0] ||
+      transaction?.signature ||
+      null;
+    return signature === TARGET_SIGNATURE;
+  });
+
+  console.log("");
+  console.log("========================");
+  console.log("TARGET TRANSACTION CHECK");
+  console.log("========================");
+  console.log("Target signature:", TARGET_SIGNATURE);
+  console.log("Found in allTransactions:", Boolean(targetBeforeParser));
+  if (targetBeforeParser) {
+    console.log(
+      "Target structure:",
+      JSON.stringify({
+        topLevelKeys: Object.keys(targetBeforeParser),
+        transactionKeys: Object.keys(targetBeforeParser.transaction || {}),
+        signatureFromTransaction: targetBeforeParser?.transaction?.signatures?.[0] || null,
+        signatureFromTopLevel: targetBeforeParser?.signature || null,
+        hasMeta: Boolean(targetBeforeParser.meta),
+        blockTime: targetBeforeParser?.blockTime ?? null
+      })
+    );
+  }
+
   const typeCounts = {
     BUY: 0,
     SELL: 0,
