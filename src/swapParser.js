@@ -258,11 +258,16 @@ function findWalletSwapLegs(transaction, wallet) {
 
 function hasProgram(transaction, programId) {
   const instructions = transaction?.transaction?.message?.instructions || [];
-  return instructions.some(
-    (instruction) =>
-      instruction?.programId === programId ||
-      instruction?.program === programId
-  );
+  const accountKeys = transaction?.transaction?.message?.accountKeys || [];
+
+  return instructions.some((instruction) => {
+    const resolvedProgramId =
+      instruction?.programId ||
+      instruction?.program ||
+      getAccountKeyValue(accountKeys[instruction?.programIdIndex]);
+
+    return resolvedProgramId === programId;
+  });
 }
 
 export function parseSwapTransaction(transaction, wallet) {
