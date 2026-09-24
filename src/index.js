@@ -246,72 +246,35 @@ try {
   console.log("Newest transaction:", formatTimestamp(newestBlockTime));
   console.log("Oldest transaction:", formatTimestamp(oldestBlockTime));
 
-  const TARGET_SIGNATURE = "3Vwt45aDB9ov9fceRsnhsvkkbd8iGUzNxumAHrXYcAwj43WHx57gwQ2E4caMUDAkhWzhGCV7ZvZtRHdF5VEQVn5";
-
-  const targetBeforeParser = allTransactions.find((transaction) => {
-    const signature =
-      transaction?.transaction?.signatures?.[0] ||
-      transaction?.signature ||
-      null;
-    return signature === TARGET_SIGNATURE;
-  });
-
-  const targetCaseInsensitiveMatch = allTransactions.find((transaction) => {
-    const signature =
-      transaction?.transaction?.signatures?.[0] ||
-      transaction?.signature ||
-      null;
-    return (
-      typeof signature === "string" &&
-      signature.toLowerCase() === TARGET_SIGNATURE.toLowerCase()
-    );
-  });
-
   console.log("");
   console.log("========================");
-  console.log("TARGET TRANSACTION CHECK");
+  console.log("HISTORY REFERENCE TRANSACTION");
   console.log("========================");
-  console.log("Target signature:", TARGET_SIGNATURE);
-  console.log("Found in allTransactions:", Boolean(targetBeforeParser));
 
-  const targetDirect = await getTransaction(TARGET_SIGNATURE);
-  console.log("Found via direct getTransaction:", Boolean(targetDirect));
-  if (targetDirect) {
-    console.log(
-      "Direct transaction:",
-      JSON.stringify({
-        blockTime: targetDirect.blockTime ?? null,
-        slot: targetDirect.slot ?? null,
-        hasMeta: Boolean(targetDirect.meta),
-        topLevelKeys: Object.keys(targetDirect),
-        signatureFromTransaction:
-          targetDirect?.transaction?.signatures?.[0] || null
-      })
-    );
-  }
-  console.log(
-    "Found case-insensitive match:",
-    Boolean(targetCaseInsensitiveMatch)
-  );
-  if (targetCaseInsensitiveMatch) {
-    const actualSignature =
-      targetCaseInsensitiveMatch?.transaction?.signatures?.[0] ||
-      targetCaseInsensitiveMatch?.signature ||
+  const referenceTransaction = allTransactions[allTransactions.length - 1] || null;
+  if (!referenceTransaction) {
+    console.log("No transaction available in history.");
+  } else {
+    const referenceSignature =
+      referenceTransaction?.transaction?.signatures?.[0] ||
+      referenceTransaction?.signature ||
       null;
-    console.log("Actual signature from history:", actualSignature);
-  }
-  if (targetBeforeParser) {
+
+    console.log("Reference signature:", referenceSignature);
     console.log(
-      "Target structure:",
+      "Reference metadata:",
       JSON.stringify({
-        topLevelKeys: Object.keys(targetBeforeParser),
-        transactionKeys: Object.keys(targetBeforeParser.transaction || {}),
-        signatureFromTransaction: targetBeforeParser?.transaction?.signatures?.[0] || null,
-        signatureFromTopLevel: targetBeforeParser?.signature || null,
-        hasMeta: Boolean(targetBeforeParser.meta),
-        blockTime: targetBeforeParser?.blockTime ?? null
+        blockTime: referenceTransaction?.blockTime ?? null,
+        slot: referenceTransaction?.slot ?? null,
+        hasMeta: Boolean(referenceTransaction?.meta),
+        topLevelKeys: Object.keys(referenceTransaction),
+        transactionKeys: Object.keys(referenceTransaction?.transaction || {}),
+        messageKeys: Object.keys(referenceTransaction?.transaction?.message || {})
       })
     );
+
+    console.log("Reference transaction JSON:");
+    console.log(JSON.stringify(referenceTransaction));
   }
 
   const typeCounts = {
