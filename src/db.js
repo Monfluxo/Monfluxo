@@ -102,9 +102,18 @@ export async function recordUsage(event) {
   });
 }
 
-export async function getWalletTradeCount(address) {
-  const rows = await request(
-    `wallet_trades?wallet_address=eq.${queryEncode(address)}&select=id`
-  );
+export async function getRecentUsageCount(userId, action) {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const query =
+    `usage_events?user_id=eq.${queryEncode(userId)}&action=eq.${queryEncode(action)}&created_at=gte.${queryEncode(since)}&select=id`;
+  const rows = await request(query);
   return rows.length;
+}
+
+export async function getWalletTradePage(address, limit = 1000, offset = 0) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
+  const rows = await request(
+    `wallet_trades?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+  );
+  return rows;
 }
