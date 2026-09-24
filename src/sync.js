@@ -52,12 +52,12 @@ function normalizedTrade(wallet, trade) {
 export async function syncWalletHistory(address, options = {}) {
   const {
     mode = "incremental",
-    maxPages = mode === "quick" ? 5 : Infinity,
+    maxPages = mode === "quick" ? 5 : Number(process.env.MAX_DEEP_PAGES || 500),
     storeRaw = process.env.STORE_RAW_TRANSACTIONS !== "false"
   } = options;
 
   const previous = await getSyncState(address);
-  await upsertWallet({ address, updated_at: new Date().toISOString() });
+  if (previous?.status === "syncing") {\n    throw new Error("Wallet sync already in progress");\n  }\n\n  await upsertWallet({ address, updated_at: new Date().toISOString() });
   await upsertSyncState({
     wallet_address: address,
     status: "syncing",
