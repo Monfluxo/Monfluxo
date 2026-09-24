@@ -273,6 +273,22 @@ try {
   console.log("========================");
   console.log("Target signature:", TARGET_SIGNATURE);
   console.log("Found in allTransactions:", Boolean(targetBeforeParser));
+
+  const targetDirect = await getTransaction(TARGET_SIGNATURE);
+  console.log("Found via direct getTransaction:", Boolean(targetDirect));
+  if (targetDirect) {
+    console.log(
+      "Direct transaction:",
+      JSON.stringify({
+        blockTime: targetDirect.blockTime ?? null,
+        slot: targetDirect.slot ?? null,
+        hasMeta: Boolean(targetDirect.meta),
+        topLevelKeys: Object.keys(targetDirect),
+        signatureFromTransaction:
+          targetDirect?.transaction?.signatures?.[0] || null
+      })
+    );
+  }
   console.log(
     "Found case-insensitive match:",
     Boolean(targetCaseInsensitiveMatch)
