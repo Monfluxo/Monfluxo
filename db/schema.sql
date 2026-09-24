@@ -14,6 +14,7 @@ create table if not exists wallet_sync_state (
   oldest_block_time timestamptz,
   pages_scanned bigint not null default 0,
   status text not null default 'idle',
+  history_complete boolean not null default false,
   last_synced_at timestamptz,
   last_deep_scan_at timestamptz,
   updated_at timestamptz not null default now()
@@ -73,3 +74,6 @@ create index if not exists idx_wallet_trades_token
   on wallet_trades(token_mint, block_time desc);
 create index if not exists idx_usage_events_user_time
   on usage_events(user_id, created_at desc);
+
+-- For an already-created project, run this once:
+alter table wallet_sync_state add column if not exists history_complete boolean not null default false;
