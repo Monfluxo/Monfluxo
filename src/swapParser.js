@@ -258,7 +258,7 @@ function findWalletSwapLegs(transaction, wallet) {
 
 function hasProgram(transaction, programId) {
   const instructions = transaction?.transaction?.message?.instructions || [];
-  const accountKeys = transaction?.transaction?.message?.accountKeys || [];
+  const accountKeys = getAllAccountKeys(transaction);
 
   return instructions.some((instruction) => {
     const resolvedProgramId =
