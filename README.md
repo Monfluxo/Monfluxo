@@ -2,60 +2,196 @@
 
 > **On-chain intelligence for Solana.**
 
-MONFLUXO is building a research and analytics platform designed to turn raw on-chain activity into actionable intelligence.
+MONFLUXO is building a research and analytics platform designed to turn raw blockchain activity into structured, actionable intelligence.
 
-Instead of simply showing transactions, MONFLUXO aims to help users understand **who is buying, what wallets are doing, how wallets are connected, and what patterns are forming around a token.**
+Instead of simply showing transactions, MONFLUXO is designed to help answer questions like:
 
-## What we're building
+- Who is buying and selling?
+- Which wallets are consistently profitable?
+- How are wallets connected?
+- Where is capital moving?
+- Are multiple wallets behaving in a coordinated way?
+- What patterns are forming around a token?
 
-### 🔎 Token Intelligence
+---
+
+## 🔎 What we're building
+
+### Token Intelligence
+
 Paste a Solana token address and investigate its on-chain activity.
 
 - Buyer and seller analysis
-- Wallet profitability
+- Wallet profitability and PnL
 - New-wallet activity
 - Capital flows
 - Wallet relationships
 - Trading behavior
 - Suspicious or coordinated activity signals
+- Wallet clustering and bundle-related signals
 
 ### 👛 Wallet Intelligence
-Analyze individual wallets beyond a simple transaction list.
+
+Go beyond a simple transaction history and build a profile of wallet behavior.
 
 - Historical trades
 - PnL and performance
 - Best and worst trades
 - Trading frequency
 - Token exposure
+- Hold-time analysis
 - Funding and transfer relationships
 - Behavioral patterns
+- External wallet interactions
 
-### 🧩 Wallet & Transaction Intelligence
+### 🧩 On-chain Intelligence Layer
+
 MONFLUXO is designed to connect individual transactions into a broader picture.
 
-The goal is to identify relationships and patterns that are difficult to see when looking at blockchain explorers one transaction at a time.
+The long-term goal is to transform:
 
-## Current Status
+`RAW TRANSACTIONS → TRADES → POSITIONS → WALLET BEHAVIOR → RELATIONSHIPS → INTELLIGENCE`
 
-🚧 **Early development**
+This allows the platform to surface patterns that are difficult to identify when looking at blockchain explorers one transaction at a time.
 
-The core data pipeline is currently being built, including Solana transaction parsing, trade reconstruction and wallet-level analytics.
+---
 
-MONFLUXO is an evolving project. Features and architecture may change as the intelligence layer develops.
+## 🏗️ Architecture
 
-## Vision
+The current codebase is organized around a data pipeline that progressively transforms Solana transaction data into higher-level analytics.
+
+```
+Solana
+   │
+   ▼
+Helius / RPC data
+   │
+   ▼
+Transaction Parser
+   │
+   ▼
+Swap / Trade Reconstruction
+   │
+   ▼
+Position Engine
+   │
+   ▼
+Wallet Analytics
+   │
+   ▼
+Relationship & Intelligence Layer
+   │
+   ▼
+MONFLUXO
+```
+
+### Current core modules
+
+| Module | Purpose |
+| --- | --- |
+| `src/helius.js` | Solana / Helius data access |
+| `src/parser.js` | Raw transaction parsing |
+| `src/swapParser.js` | Swap and trade reconstruction |
+| `src/positionEngine.js` | Position and PnL logic |
+| `src/index.js` | Application entry point |
+
+Supporting technical documentation is also maintained in the repository through the **Architecture** and **Data Model** documents.
+
+---
+
+## 🚧 Current Status
+
+**Early development — core intelligence pipeline under construction.**
+
+The current focus is on making the underlying data layer reliable before building the full intelligence product on top of it.
+
+### Roadmap
+
+- [x] Solana transaction ingestion
+- [x] Initial transaction parser
+- [x] Swap parsing
+- [x] Position engine foundation
+- [ ] Robust BUY / SELL reconstruction
+- [ ] Historical wallet analytics
+- [ ] Accurate realized / unrealized PnL
+- [ ] Token-level capital flow analysis
+- [ ] Wallet relationship graph
+- [ ] Wallet clustering / bundle signals
+- [ ] Intelligence scoring
+- [ ] Token intelligence dashboard
+- [ ] Wallet intelligence dashboard
+- [ ] AI Analyst
+- [ ] Real-time Radar
+- [ ] User accounts and monetization
+
+---
+
+## 🎯 Vision
 
 > **Don't just look at the blockchain. Understand it.**
 
-MONFLUXO aims to become a research layer for Solana — turning raw on-chain data into a clearer picture of market participants, wallet behavior and emerging activity.
+MONFLUXO aims to become a research layer for Solana — turning raw on-chain data into a clearer picture of market participants, wallet behavior, capital movement and emerging activity.
+
+The objective is not to replace a blockchain explorer.
+
+**It is to add the intelligence layer on top of one.**
+
+---
+
+## ⚙️ Development
+
+The project currently runs on Node.js with ES modules.
+
+### Environment
+
+Create a local `.env` file based on `.env.example`.
+
+Then install dependencies:
+
+```bash
+npm install
+```
+
+Run the application:
+
+```bash
+npm start
+```
+
+---
+
+## 📁 Repository structure
+
+```
+MONFLUXO/
+├── src/
+│   ├── helius.js
+│   ├── index.js
+│   ├── parser.js
+│   ├── positionEngine.js
+│   └── swapParser.js
+├── Architecture
+├── Data Model
+├── .env.example
+├── package.json
+└── README.md
+```
+
+---
 
 ## Disclaimer
 
-MONFLUXO is an analytics and research project. Information generated by the platform is intended for informational purposes and should not be considered financial advice.
+MONFLUXO is an analytics and research project.
+
+Information generated by the platform is intended for informational purposes and should not be considered financial advice.
+
+---
 
 ## Project
 
 **MONFLUXO**  
-On-chain intelligence for Solana.
+_On-chain intelligence for Solana._
 
-[Website](https://monfluxo.com) · [X](https://x.com/Monfluxo)
+**Website:** https://monfluxo.com  
+**X:** https://x.com/Monfluxo  
+**GitHub:** https://github.com/Monfluxo/Monfluxo
