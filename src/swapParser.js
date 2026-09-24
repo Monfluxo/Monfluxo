@@ -268,11 +268,22 @@ function hasProgram(transaction, programId) {
 export function parseSwapTransaction(transaction, wallet) {
   if (!transaction?.meta) return null;
 
-  const isRaydium = hasProgram(transaction, RAYDIUM_AMM_V4);
-  if (!isRaydium) return null;
-
   const debugSignature = "3Vwt45aDB9ov9fceRsnhsvkkbd8iGUzNxumAHrXYcAwj43WHx57gwQ2E4caMUDAkhWzhGCV7ZvZtRHdF5VEQVn5";
   const debug = getSignature(transaction) === debugSignature;
+  const isRaydium = hasProgram(transaction, RAYDIUM_AMM_V4);
+
+  if (debug) {
+    console.log("[SWAP DEBUG] Raydium:", isRaydium);
+    console.log(
+      "[SWAP DEBUG] outerPrograms:",
+      (transaction?.transaction?.message?.instructions || []).map((instruction) => ({
+        program: instruction?.program,
+        programId: instruction?.programId
+      }))
+    );
+  }
+
+  if (!isRaydium) return null;
 
   const {
     tokenAccountMap,
