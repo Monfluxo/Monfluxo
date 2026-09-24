@@ -349,6 +349,33 @@ try {
       "Raydium account indices:",
       JSON.stringify(raydiumInstruction?.accounts || [])
     );
+
+    const referenceAnalysis = parseTransaction(swapReference, wallet);
+    console.log("PARSER RESULT:", JSON.stringify({
+      type: referenceAnalysis?.type ?? null,
+      trade: referenceAnalysis?.trade ?? null,
+      tokenChanges: referenceAnalysis?.tokenChanges ?? null,
+      solChange: referenceAnalysis?.solChange ?? null,
+      reason: referenceAnalysis?.reason ?? null
+    }));
+
+    const innerSummary = [];
+    for (const group of innerGroups) {
+      for (const instruction of group.instructions || []) {
+        const programId =
+          instruction?.programId ||
+          getAccountKey(keys[instruction?.programIdIndex]) ||
+          null;
+        innerSummary.push({
+          parentIndex: group.index,
+          programId,
+          type: instruction?.parsed?.type || null,
+          info: instruction?.parsed?.info || null,
+          data: instruction?.data || null
+        });
+      }
+    }
+    console.log("INNER SUMMARY:", JSON.stringify(innerSummary));
   }
 
   const typeCounts = {
