@@ -271,12 +271,34 @@ export function parseSwapTransaction(transaction, wallet) {
   const isRaydium = hasProgram(transaction, RAYDIUM_AMM_V4);
   if (!isRaydium) return null;
 
+  const debugSignature = "3Vwt45aDB9ov9fceRsnhsvkkbd8iGUzNxumAHrXYcAwj43WHx57gwQ2E4caMUDAkhWzhGCV7ZvZtRHdF5VEQVn5";
+  const debug = getSignature(transaction) === debugSignature;
+
   const {
     tokenAccountMap,
     walletChanges,
     inputs,
     outputs
   } = findWalletSwapLegs(transaction, wallet);
+
+  if (debug) {
+    console.log("[SWAP DEBUG] Raydium:", isRaydium);
+    console.log("[SWAP DEBUG] wallet:", wallet);
+    console.log("[SWAP DEBUG] inputs:", inputs);
+    console.log("[SWAP DEBUG] outputs:", outputs);
+    console.log("[SWAP DEBUG] walletChanges:", [...walletChanges.values()]);
+    console.log(
+      "[SWAP DEBUG] walletAccounts:",
+      [...tokenAccountMap.entries()]
+        .filter(([, info]) => info.owner === wallet)
+        .map(([account, info]) => ({ account, ...info }))
+    );
+    console.log(
+      "[SWAP DEBUG] allTokenAccounts:",
+      [...tokenAccountMap.entries()].map(([account, info]) => ({ account, ...info }))
+    );
+    console.log("[SWAP DEBUG] rawSplTransfers:", getSplTransfers(transaction));
+  }
 
   const wsolInput = inputs.find(([mint]) => mint === WSOL_MINT);
   const wsolOutput = outputs.find(([mint]) => mint === WSOL_MINT);
