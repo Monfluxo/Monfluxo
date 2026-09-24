@@ -25,7 +25,7 @@ export async function assertAnalysisAllowed({ userId, wallet, plan = "free", mod
   await recordUsage({
     user_id: userId,
     wallet_address: wallet,
-    action: `wallet_analysis:${mode}`
+    action: "wallet_analysis"
   });
 
   return { allowed: true, dailyLimit, used: count + 1 };
