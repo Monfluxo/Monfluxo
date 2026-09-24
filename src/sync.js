@@ -99,8 +99,8 @@ export async function syncWalletHistory(address, options = {}) {
         // Helius returns newest -> oldest. Once we hit the last
         // transaction already indexed, everything after it is known.
         const alreadyKnown =
-          mode === "incremental" &&
-          previous?.newest_signature === signature;
+          previous?.newest_signature === signature &&
+          (mode !== "deep" || previous?.history_complete === true);
 
         if (alreadyKnown) {
           stoppedOnExisting = true;
@@ -161,6 +161,9 @@ export async function syncWalletHistory(address, options = {}) {
 
     if (mode === "deep") {
       syncState.last_deep_scan_at = now;
+      syncState.history_complete = !paginationToken && !stoppedOnExisting;
+    } else if (previous?.history_complete === true) {
+      syncState.history_complete = true;
     }
 
     await upsertSyncState(syncState);
