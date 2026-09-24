@@ -248,33 +248,74 @@ try {
 
   console.log("");
   console.log("========================");
-  console.log("HISTORY REFERENCE TRANSACTION");
+  console.log("SWAP REFERENCE TRANSACTION");
   console.log("========================");
 
-  const referenceTransaction = allTransactions[allTransactions.length - 1] || null;
-  if (!referenceTransaction) {
-    console.log("No transaction available in history.");
+  const RAYDIUM_AMM_V4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+
+  const getAccountKey = (key) =>
+    typeof key === "string" ? key : key?.pubkey || null;
+
+  const swapReference = allTransactions.find((transaction) => {
+    const keys = transaction?.transaction?.message?.accountKeys || [];
+    const instructions = transaction?.transaction?.message?.instructions || [];
+
+    return instructions.some((instruction) => {
+      const programId =
+        instruction?.programId ||
+        getAccountKey(keys[instruction?.programIdIndex]);
+
+      return programId === RAYDIUM_AMM_V4;
+    });
+  });
+
+  if (!swapReference) {
+    console.log("No Raydium AMM v4 transaction found in history.");
   } else {
-    const referenceSignature =
-      referenceTransaction?.transaction?.signatures?.[0] ||
-      referenceTransaction?.signature ||
+    const signature =
+      swapReference?.transaction?.signatures?.[0] ||
+      swapReference?.signature ||
       null;
 
-    console.log("Reference signature:", referenceSignature);
-    console.log(
-      "Reference metadata:",
-      JSON.stringify({
-        blockTime: referenceTransaction?.blockTime ?? null,
-        slot: referenceTransaction?.slot ?? null,
-        hasMeta: Boolean(referenceTransaction?.meta),
-        topLevelKeys: Object.keys(referenceTransaction),
-        transactionKeys: Object.keys(referenceTransaction?.transaction || {}),
-        messageKeys: Object.keys(referenceTransaction?.transaction?.message || {})
-      })
-    );
+    const message = swapReference?.transaction?.message || {};
+    const keys = message.accountKeys || [];
+    const instructions = message.instructions || [];
+    const raydiumInstructions = instructions.filter((instruction) => {
+      const programId =
+        instruction?.programId ||
+        getAccountKey(keys[instruction?.programIdIndex]);
 
-    console.log("Reference transaction JSON:");
-    console.log(JSON.stringify(referenceTransaction));
+      return programId === RAYDIUM_AMM_V4;
+    });
+
+    console.log("Signature:", signature);
+    console.log("Block time:", formatTimestamp(swapReference?.blockTime));
+    console.log("Slot:", swapReference?.slot ?? null);
+    console.log("Version:", swapReference?.version ?? "legacy");
+    console.log("Raydium instructions:", raydiumInstructions.length);
+
+    console.log("Raydium instruction details:");
+    raydiumInstructions.forEach((instruction, index) => {
+      console.log(
+        JSON.stringify({
+          index,
+          programId:
+            instruction?.programId ||
+            getAccountKey(keys[instruction?.programIdIndex]),
+          programIdIndex: instruction?.programIdIndex ?? null,
+          accounts: instruction?.accounts || [],
+          data: instruction?.data || null,
+          parsed: instruction?.parsed || null
+        })
+      );
+    });
+
+    console.log("Inner instruction groups:", swapReference?.meta?.innerInstructions || []);
+    console.log("Log messages:", swapReference?.meta?.logMessages || []);
+    console.log("Pre balances:", swapReference?.meta?.preBalances || []);
+    console.log("Post balances:", swapReference?.meta?.postBalances || []);
+    console.log("Pre token balances:", swapReference?.meta?.preTokenBalances || []);
+    console.log("Post token balances:", swapReference?.meta?.postTokenBalances || []);
   }
 
   const typeCounts = {
