@@ -5,8 +5,7 @@ import {
   getSyncState,
   upsertSyncState,
   upsertTransactions,
-  upsertTrades,
-  transactionExists
+  upsertTrades
 } from "./db.js";
 
 function signatureOf(tx) {
@@ -20,10 +19,9 @@ function isoFromBlockTime(blockTime) {
 }
 
 function normalizedTransaction(wallet, tx, analysis, storeRaw) {
-  const signature = signatureOf(tx);
   return {
     wallet_address: wallet,
-    signature,
+    signature: signatureOf(tx),
     slot: tx?.slot ?? null,
     block_time: isoFromBlockTime(tx?.blockTime),
     tx_version: String(tx?.transaction?.version ?? "legacy"),
@@ -52,12 +50,23 @@ function normalizedTrade(wallet, trade) {
 export async function syncWalletHistory(address, options = {}) {
   const {
     mode = "incremental",
-    maxPages = mode === "quick" ? 5 : Number(process.env.MAX_DEEP_PAGES || 500),
+    maxPages = mode === "quick"
+      ? Number(process.env.MAX_QUICK_PAGES || 5)
+      : Number(process.env.MAX_DEEP_PAGES || 500),
     storeRaw = process.env.STORE_RAW_TRANSACTIONS !== "false"
   } = options;
 
   const previous = await getSyncState(address);
-  if (previous?.status === "syncing") {\n    throw new Error("Wallet sync already in progress");\n  }\n\n  await upsertWallet({ address, updated_at: new Date().toISOString() });
+
+  if (previous?.status === "syncing") {
+    throw new Error("Wallet sync already in progress");
+  }
+
+  await upsertWallet({
+    address,
+    updated_at: new Date().toISOString()
+  });
+
   await upsertSyncState({
     wallet_address: address,
     status: "syncing",
@@ -87,14 +96,15 @@ export async function syncWalletHistory(address, options = {}) {
         const signature = signatureOf(tx);
         if (!signature) continue;
 
+        // Helius returns newest -> oldest. Once we hit the last
+        // transaction already indexed, everything after it is known.
         const alreadyKnown =
           mode === "incremental" &&
-          page > 1 &&
-          await transactionExists(address, signature);
+          previous?.newest_signature === signature;
 
         if (alreadyKnown) {
           stoppedOnExisting = true;
-          continue;
+          break;
         }
 
         const analysis = parseTransaction(tx, address);
@@ -104,16 +114,18 @@ export async function syncWalletHistory(address, options = {}) {
           tradeRows.push(normalizedTrade(address, analysis.trade));
         }
 
-        const blockTime = tx?.blockTime;
-        if (typeof blockTime === "number") {
-          if (!newest || blockTime > newest.blockTime) newest = { blockTime, signature };
-          if (!oldest || blockTime < oldest.blockTime) oldest = { blockTime, signature };
+        if (typeof tx?.blockTime === "number") {
+          if (!newest || tx.blockTime > newest.blockTime) {
+            newest = { blockTime: tx.blockTime, signature };
+          }
+          if (!oldest || tx.blockTime < oldest.blockTime) {
+            oldest = { blockTime: tx.blockTime, signature };
+          }
         }
       }
 
       await upsertTransactions(txRows);
       await upsertTrades(tradeRows);
-
       total += txRows.length;
 
       if (stoppedOnExisting) break;
@@ -147,14 +159,16 @@ export async function syncWalletHistory(address, options = {}) {
       syncState.oldest_block_time = previous.oldest_block_time;
     }
 
-    if (mode === "deep") syncState.last_deep_scan_at = now;
+    if (mode === "deep") {
+      syncState.last_deep_scan_at = now;
+    }
 
     await upsertSyncState(syncState);
 
     return {
       address,
       mode,
-      pages,
+      pages: page,
       transactionsStored: total,
       stoppedOnExisting,
       status: "idle"
