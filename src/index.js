@@ -248,23 +248,20 @@ try {
 
   console.log("");
   console.log("========================");
-  console.log("SWAP REFERENCE TRANSACTION");
+  console.log("SWAP REFERENCE");
   console.log("========================");
 
   const RAYDIUM_AMM_V4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
-
   const getAccountKey = (key) =>
     typeof key === "string" ? key : key?.pubkey || null;
 
   const swapReference = allTransactions.find((transaction) => {
     const keys = transaction?.transaction?.message?.accountKeys || [];
     const instructions = transaction?.transaction?.message?.instructions || [];
-
     return instructions.some((instruction) => {
       const programId =
         instruction?.programId ||
         getAccountKey(keys[instruction?.programIdIndex]);
-
       return programId === RAYDIUM_AMM_V4;
     });
   });
@@ -276,46 +273,82 @@ try {
       swapReference?.transaction?.signatures?.[0] ||
       swapReference?.signature ||
       null;
-
     const message = swapReference?.transaction?.message || {};
     const keys = message.accountKeys || [];
-    const instructions = message.instructions || [];
-    const raydiumInstructions = instructions.filter((instruction) => {
+    const raydiumInstruction = (message.instructions || []).find((instruction) => {
       const programId =
         instruction?.programId ||
         getAccountKey(keys[instruction?.programIdIndex]);
-
       return programId === RAYDIUM_AMM_V4;
     });
 
-    console.log("Signature:", signature);
-    console.log("Block time:", formatTimestamp(swapReference?.blockTime));
-    console.log("Slot:", swapReference?.slot ?? null);
-    console.log("Version:", swapReference?.version ?? "legacy");
-    console.log("Raydium instructions:", raydiumInstructions.length);
+    const innerGroups = swapReference?.meta?.innerInstructions || [];
+    const innerCount = innerGroups.reduce(
+      (total, group) => total + (group.instructions || []).length,
+      0
+    );
 
-    console.log("Raydium instruction details:");
-    raydiumInstructions.forEach((instruction, index) => {
+    const walletPreTokens = (swapReference?.meta?.preTokenBalances || [])
+      .filter((x) => x.owner === wallet)
+      .map((x) => ({
+        mint: x.mint,
+        amount: x.uiTokenAmount?.amount ?? null,
+        decimals: x.uiTokenAmount?.decimals ?? null,
+        uiAmount: x.uiTokenAmount?.uiAmountString ?? x.uiTokenAmount?.uiAmount ?? null
+      }));
+
+    const walletPostTokens = (swapReference?.meta?.postTokenBalances || [])
+      .filter((x) => x.owner === wallet)
+      .map((x) => ({
+        mint: x.mint,
+        amount: x.uiTokenAmount?.amount ?? null,
+        decimals: x.uiTokenAmount?.decimals ?? null,
+        uiAmount: x.uiTokenAmount?.uiAmountString ?? x.uiTokenAmount?.uiAmount ?? null
+      }));
+
+    const walletAccountIndex = keys.findIndex(
+      (key) => getAccountKey(key) === wallet
+    );
+
+    console.log("Signature:", signature);
+    console.log("Time:", formatTimestamp(swapReference?.blockTime));
+    console.log("Slot:", swapReference?.slot ?? null);
+    console.log("Raydium instruction index:", message.instructions.indexOf(raydiumInstruction));
+    console.log(
+      "Raydium instruction:",
+      JSON.stringify({
+        programId:
+          raydiumInstruction?.programId ||
+          getAccountKey(keys[raydiumInstruction?.programIdIndex]),
+        programIdIndex: raydiumInstruction?.programIdIndex ?? null,
+        accountCount: raydiumInstruction?.accounts?.length ?? 0,
+        data: raydiumInstruction?.data || null
+      })
+    );
+    console.log("Inner instruction count:", innerCount);
+    console.log("Inner group count:", innerGroups.length);
+    console.log("Log count:", swapReference?.meta?.logMessages?.length ?? 0);
+    console.log("Wallet account index:", walletAccountIndex);
+    console.log("Wallet pre tokens:", JSON.stringify(walletPreTokens));
+    console.log("Wallet post tokens:", JSON.stringify(walletPostTokens));
+
+    if (walletAccountIndex >= 0) {
       console.log(
+        "Wallet SOL pre/post:",
         JSON.stringify({
-          index,
-          programId:
-            instruction?.programId ||
-            getAccountKey(keys[instruction?.programIdIndex]),
-          programIdIndex: instruction?.programIdIndex ?? null,
-          accounts: instruction?.accounts || [],
-          data: instruction?.data || null,
-          parsed: instruction?.parsed || null
+          pre: swapReference?.meta?.preBalances?.[walletAccountIndex] ?? null,
+          post: swapReference?.meta?.postBalances?.[walletAccountIndex] ?? null,
+          delta:
+            (swapReference?.meta?.postBalances?.[walletAccountIndex] ?? 0) -
+            (swapReference?.meta?.preBalances?.[walletAccountIndex] ?? 0)
         })
       );
-    });
+    }
 
-    console.log("Inner instruction groups:", swapReference?.meta?.innerInstructions || []);
-    console.log("Log messages:", swapReference?.meta?.logMessages || []);
-    console.log("Pre balances:", swapReference?.meta?.preBalances || []);
-    console.log("Post balances:", swapReference?.meta?.postBalances || []);
-    console.log("Pre token balances:", swapReference?.meta?.preTokenBalances || []);
-    console.log("Post token balances:", swapReference?.meta?.postTokenBalances || []);
+    console.log(
+      "Raydium account indices:",
+      JSON.stringify(raydiumInstruction?.accounts || [])
+    );
   }
 
   const typeCounts = {
