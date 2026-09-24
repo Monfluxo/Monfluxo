@@ -256,12 +256,34 @@ try {
     return signature === TARGET_SIGNATURE;
   });
 
+  const targetCaseInsensitiveMatch = allTransactions.find((transaction) => {
+    const signature =
+      transaction?.transaction?.signatures?.[0] ||
+      transaction?.signature ||
+      null;
+    return (
+      typeof signature === "string" &&
+      signature.toLowerCase() === TARGET_SIGNATURE.toLowerCase()
+    );
+  });
+
   console.log("");
   console.log("========================");
   console.log("TARGET TRANSACTION CHECK");
   console.log("========================");
   console.log("Target signature:", TARGET_SIGNATURE);
   console.log("Found in allTransactions:", Boolean(targetBeforeParser));
+  console.log(
+    "Found case-insensitive match:",
+    Boolean(targetCaseInsensitiveMatch)
+  );
+  if (targetCaseInsensitiveMatch) {
+    const actualSignature =
+      targetCaseInsensitiveMatch?.transaction?.signatures?.[0] ||
+      targetCaseInsensitiveMatch?.signature ||
+      null;
+    console.log("Actual signature from history:", actualSignature);
+  }
   if (targetBeforeParser) {
     console.log(
       "Target structure:",
