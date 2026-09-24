@@ -134,6 +134,10 @@ export function parseTransaction(transaction, wallet) {
     return result("OTHER", { reason: "Missing transaction metadata" });
   }
 
+  const debugSignature = "3Vwt45aDB9ov9fceRsnhsvkkbd8iGUzNxumAHrXYcAwj43WHx57gwQ2E4caMUDAkhWzhGCV7ZvZtRHdF5VEQVn5";
+  const debug = getSignature(transaction) === debugSignature;
+  if (debug) console.log("[MONFLUXO DEBUG] parser.js CURRENT VERSION");
+
   // First use instruction-level swap extraction for supported DEXes.
   // This avoids treating unrelated SOL movements (rent, transfers, fees)
   // as part of the trade.
