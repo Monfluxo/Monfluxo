@@ -12,6 +12,18 @@ function getAccountKeyValue(key) {
     : key?.pubkey || key?.address || null;
 }
 
+function getAllAccountKeys(transaction) {
+  const message = transaction?.transaction?.message;
+  const staticKeys = message?.accountKeys || [];
+  const loaded = transaction?.meta?.loadedAddresses || {};
+
+  return [
+    ...staticKeys,
+    ...(loaded.writable || []),
+    ...(loaded.readonly || [])
+  ];
+}
+
 function getSignature(transaction) {
   return (
     transaction?.transaction?.signatures?.[0] ||
@@ -20,7 +32,32 @@ function getSignature(transaction) {
   );
 }
 
-function buildTokenAccountMap(transaction, wallet) {
+function isTokenAccountInitialization(instruction) {
+  const parsed = instruction?.parsed;
+
+  return (
+    instruction?.program === "spl-token" &&
+    [
+      "initializeAccount",
+      "initializeAccount2",
+      "initializeAccount3"
+    ].includes(parsed?.type) &&
+    parsed?.info?.account &&
+    parsed?.info?.mint
+  );
+}
+
+function addInitializedTokenAccount(map, instruction) {
+  const info = instruction.parsed.info;
+
+  map.set(info.account, {
+    mint: info.mint,
+    owner: info.owner || info.authority || null,
+    decimals: 0
+  });
+}
+
+function buildTokenAccountMap(transaction) {
   const map = new Map();
 
   for (const item of [
@@ -42,47 +79,17 @@ function buildTokenAccountMap(transaction, wallet) {
     }
   }
 
-  const instructions = transaction?.transaction?.message?.instructions || [];
-
-  for (const instruction of instructions) {
-    const parsed = instruction?.parsed;
-    const info = parsed?.info;
-
-    if (
-      instruction?.program === "spl-token" &&
-      (parsed?.type === "initializeAccount" ||
-        parsed?.type === "initializeAccount2" ||
-        parsed?.type === "initializeAccount3") &&
-      info?.account &&
-      info?.mint
-    ) {
-      map.set(info.account, {
-        mint: info.mint,
-        owner: info.owner || info.authority || null,
-        decimals: 0
-      });
+  for (const instruction of transaction?.transaction?.message?.instructions || []) {
+    if (isTokenAccountInitialization(instruction)) {
+      addInitializedTokenAccount(map, instruction);
     }
   }
 
   // Some account metadata is only visible through inner instructions.
   for (const group of transaction?.meta?.innerInstructions || []) {
     for (const instruction of group.instructions || []) {
-      const parsed = instruction?.parsed;
-      const info = parsed?.info;
-
-      if (
-        instruction?.program === "spl-token" &&
-        (parsed?.type === "initializeAccount" ||
-          parsed?.type === "initializeAccount2" ||
-          parsed?.type === "initializeAccount3") &&
-        info?.account &&
-        info?.mint
-      ) {
-        map.set(info.account, {
-          mint: info.mint,
-          owner: info.owner || info.authority || null,
-          decimals: 0
-        });
+      if (isTokenAccountInitialization(instruction)) {
+        addInitializedTokenAccount(map, instruction);
       }
     }
   }
@@ -118,26 +125,21 @@ function getSplTransfers(transaction) {
       const info = parsed?.info;
 
       if (
-        instruction?.programId === SPL_TOKEN_PROGRAM ||
-        instruction?.program === "spl-token"
+        (instruction?.programId === SPL_TOKEN_PROGRAM ||
+          instruction?.program === "spl-token") &&
+        (parsed?.type === "transfer" ||
+          parsed?.type === "transferChecked") &&
+        info?.source &&
+        info?.destination &&
+        (info?.amount != null || info?.tokenAmount?.amount != null)
       ) {
-        if (
-          (parsed?.type === "transfer" ||
-            parsed?.type === "transferChecked") &&
-          info?.source &&
-          info?.destination &&
-          (info?.amount != null || info?.tokenAmount?.amount != null)
-        ) {
-          transfers.push({
-            source: info.source,
-            destination: info.destination,
-            rawAmount: String(
-              info.amount ?? info.tokenAmount.amount
-            ),
-            mint: null,
-            parentIndex: group.index
-          });
-        }
+        transfers.push({
+          source: info.source,
+          destination: info.destination,
+          rawAmount: String(info.amount ?? info.tokenAmount.amount),
+          mint: null,
+          parentIndex: group.index
+        });
       }
     }
   }
@@ -147,23 +149,23 @@ function getSplTransfers(transaction) {
 
 function getWalletTokenChanges(transaction, wallet, tokenAccountMap) {
   const changes = new Map();
+  const preBalances = transaction?.meta?.preTokenBalances || [];
+  const postBalances = transaction?.meta?.postTokenBalances || [];
+  const accountKeys = transaction?.transaction?.message?.accountKeys || [];
 
   for (const [account, info] of tokenAccountMap) {
     if (info.owner !== wallet) continue;
 
-    const pre = (transaction?.meta?.preTokenBalances || []).find(
-      (item) => item.mint === info.mint && item.accountIndex != null &&
-        getAccountKeyValue(
-          transaction?.transaction?.message?.accountKeys?.[item.accountIndex]
-        ) === account
-    );
+    const findBalance = (balances) =>
+      balances.find(
+        (item) =>
+          item.mint === info.mint &&
+          item.accountIndex != null &&
+          getAccountKeyValue(accountKeys[item.accountIndex]) === account
+      );
 
-    const post = (transaction?.meta?.postTokenBalances || []).find(
-      (item) => item.mint === info.mint && item.accountIndex != null &&
-        getAccountKeyValue(
-          transaction?.transaction?.message?.accountKeys?.[item.accountIndex]
-        ) === account
-    );
+    const pre = findBalance(preBalances);
+    const post = findBalance(postBalances);
 
     const before = BigInt(pre?.uiTokenAmount?.amount || "0");
     const after = BigInt(post?.uiTokenAmount?.amount || "0");
@@ -174,7 +176,8 @@ function getWalletTokenChanges(transaction, wallet, tokenAccountMap) {
     changes.set(info.mint, {
       mint: info.mint,
       rawChange: delta.toString(),
-      decimals: post?.uiTokenAmount?.decimals ??
+      decimals:
+        post?.uiTokenAmount?.decimals ??
         pre?.uiTokenAmount?.decimals ??
         getMintDecimals(transaction, info.mint, tokenAccountMap)
     });
@@ -198,7 +201,7 @@ function enrichTransferMints(transfers, tokenAccountMap) {
 }
 
 function findWalletSwapLegs(transaction, wallet) {
-  const tokenAccountMap = buildTokenAccountMap(transaction, wallet);
+  const tokenAccountMap = buildTokenAccountMap(transaction);
   const transfers = enrichTransferMints(
     getSplTransfers(transaction),
     tokenAccountMap
@@ -273,20 +276,7 @@ function hasProgram(transaction, programId) {
 export function parseSwapTransaction(transaction, wallet) {
   if (!transaction?.meta) return null;
 
-  const debugSignature = "3Vwt45aDB9ov9fceRsnhsvkkbd8iGUzNxumAHrXYcAwj43WHx57gwQ2E4caMUDAkhWzhGCV7ZvZtRHdF5VEQVn5";
-  const debug = getSignature(transaction) === debugSignature;
   const isRaydium = hasProgram(transaction, RAYDIUM_AMM_V4);
-
-  if (debug) {
-    console.log("[SWAP DEBUG] Raydium:", isRaydium);
-    console.log(
-      "[SWAP DEBUG] outerPrograms:",
-      (transaction?.transaction?.message?.instructions || []).map((instruction) => ({
-        program: instruction?.program,
-        programId: instruction?.programId
-      }))
-    );
-  }
 
   if (!isRaydium) return null;
 
@@ -297,44 +287,20 @@ export function parseSwapTransaction(transaction, wallet) {
     outputs
   } = findWalletSwapLegs(transaction, wallet);
 
-  if (debug) {
-    console.log("[SWAP DEBUG] Raydium:", isRaydium);
-    console.log("[SWAP DEBUG] wallet:", wallet);
-    console.log("[SWAP DEBUG] inputs:", inputs);
-    console.log("[SWAP DEBUG] outputs:", outputs);
-    console.log("[SWAP DEBUG] walletChanges:", [...walletChanges.values()]);
-    console.log(
-      "[SWAP DEBUG] walletAccounts:",
-      [...tokenAccountMap.entries()]
-        .filter(([, info]) => info.owner === wallet)
-        .map(([account, info]) => ({ account, ...info }))
-    );
-    console.log(
-      "[SWAP DEBUG] allTokenAccounts:",
-      [...tokenAccountMap.entries()].map(([account, info]) => ({ account, ...info }))
-    );
-    console.log("[SWAP DEBUG] rawSplTransfers:", getSplTransfers(transaction));
-  }
-
   const wsolInput = inputs.find(([mint]) => mint === WSOL_MINT);
   const wsolOutput = outputs.find(([mint]) => mint === WSOL_MINT);
 
   const nonWsolInputs = inputs.filter(([mint]) => mint !== WSOL_MINT);
   const nonWsolOutputs = outputs.filter(([mint]) => mint !== WSOL_MINT);
 
-  // For temporary WSOL accounts, account-level metadata can disappear
-  // from pre/post token balances after the account is closed. When that
-  // happens, use the wallet's actual token delta plus the observed SPL
-  // transfer as a conservative Raydium fallback.
+  // Temporary WSOL accounts may disappear from pre/post token balances
+  // after being closed. Use the wallet token delta as a conservative fallback.
   const walletNonWsolChanges = [...walletChanges.values()].filter(
     (change) => change.mint !== WSOL_MINT
   );
 
   const fallbackTokenIn = walletNonWsolChanges.filter(
     (change) => BigInt(change.rawChange) > 0n
-  );
-  const fallbackTokenOut = walletNonWsolChanges.filter(
-    (change) => BigInt(change.rawChange) < 0n
   );
 
   const fallbackWsolInput = inputs
@@ -348,27 +314,38 @@ export function parseSwapTransaction(transaction, wallet) {
     const effectiveWsolInput = wsolInput
       ? wsolInput[1]
       : fallbackWsolInput;
-    const effectiveOutput = wsolInput && nonWsolOutputs.length === 1
-      ? nonWsolOutputs[0]
-      : [
-          fallbackTokenIn[0].mint,
-          BigInt(fallbackTokenIn[0].rawChange)
-        ];
+
+    const effectiveOutput =
+      wsolInput && nonWsolOutputs.length === 1
+        ? nonWsolOutputs[0]
+        : [
+            fallbackTokenIn[0].mint,
+            BigInt(fallbackTokenIn[0].rawChange)
+          ];
+
     const [outputMint, outputRaw] = effectiveOutput;
+
     const outputDecimals = getMintDecimals(
       transaction,
       outputMint,
       tokenAccountMap
     );
-    const inputRaw = effectiveWsolInput;
+
     const inputDecimals = getMintDecimals(
       transaction,
       WSOL_MINT,
       tokenAccountMap
     );
 
-    const inputAmount = toAmount(inputRaw.toString(), inputDecimals);
-    const outputAmount = toAmount(outputRaw.toString(), outputDecimals);
+    const inputAmount = toAmount(
+      effectiveWsolInput.toString(),
+      inputDecimals
+    );
+
+    const outputAmount = toAmount(
+      outputRaw.toString(),
+      outputDecimals
+    );
 
     if (inputAmount > 0 && outputAmount > 0) {
       return {
@@ -389,20 +366,28 @@ export function parseSwapTransaction(transaction, wallet) {
 
   if (wsolOutput && nonWsolInputs.length === 1) {
     const [inputMint, inputRaw] = nonWsolInputs[0];
+
     const inputDecimals = getMintDecimals(
       transaction,
       inputMint,
       tokenAccountMap
     );
-    const outputRaw = wsolOutput[1];
+
     const outputDecimals = getMintDecimals(
       transaction,
       WSOL_MINT,
       tokenAccountMap
     );
 
-    const inputAmount = toAmount(inputRaw.toString(), inputDecimals);
-    const outputAmount = toAmount(outputRaw.toString(), outputDecimals);
+    const inputAmount = toAmount(
+      inputRaw.toString(),
+      inputDecimals
+    );
+
+    const outputAmount = toAmount(
+      wsolOutput[1].toString(),
+      outputDecimals
+    );
 
     if (inputAmount > 0 && outputAmount > 0) {
       return {

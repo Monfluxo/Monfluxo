@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-      "start": "node --env-file=.env src/index.js"
-      }
+    "start": "node --env-file=.env src/index.js",
+    "analyze:wallet": "node --env-file=.env src/walletAnalyzer.js"
   }
+}

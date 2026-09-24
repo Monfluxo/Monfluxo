@@ -7,33 +7,56 @@ if (!HELIUS_API_KEY) {
 const HELIUS_RPC_URL =
   `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
+const MAX_RETRIES = Number(process.env.HELIUS_MAX_RETRIES || 5);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function heliusRequest(method, params, id) {
-  const response = await fetch(HELIUS_RPC_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id,
-      method,
-      params
-    })
-  });
+  let attempt = 0;
 
-  if (!response.ok) {
-    throw new Error(`Helius request failed: ${response.status}`);
-  }
+  while (true) {
+    const response = await fetch(HELIUS_RPC_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method,
+        params
+      })
+    });
 
-  const data = await response.json();
+    if (response.ok) {
+      const data = await response.json();
 
-  if (data.error) {
-    throw new Error(
-      data.error.message || "Helius API error"
+      if (data.error) {
+        throw new Error(data.error.message || "Helius API error");
+      }
+
+      return data.result;
+    }
+
+    const retryable = response.status === 429 || response.status === 503;
+    if (!retryable || attempt >= MAX_RETRIES) {
+      throw new Error(`Helius request failed: ${response.status}`);
+    }
+
+    const retryAfter = Number(response.headers.get("retry-after") || 0);
+    const exponential = Math.min(30000, 1000 * 2 ** attempt);
+    const jitter = Math.floor(Math.random() * 250);
+    const delay = retryAfter > 0 ? retryAfter * 1000 : exponential + jitter;
+
+    console.warn(
+      `Helius rate/service limit (${response.status}). Retrying in ${delay}ms.`
     );
-  }
 
-  return data.result;
+    await sleep(delay);
+    attempt++;
+  }
 }
 
 export async function getTransactionsForAddress(
@@ -50,18 +73,15 @@ export async function getTransactionsForAddress(
     options.paginationToken = paginationToken;
   }
 
-  return await heliusRequest(
+  return heliusRequest(
     "getTransactionsForAddress",
-    [
-      address,
-      options
-    ],
+    [address, options],
     "monfluxo-history"
   );
 }
 
 export async function getTransaction(signature) {
-  return await heliusRequest(
+  return heliusRequest(
     "getTransaction",
     [
       signature,
