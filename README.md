@@ -104,28 +104,71 @@ Supporting technical documentation is also maintained in the repository through 
 
 ## 🚧 Current Status
 
-**Early development — core intelligence pipeline under construction.**
+**Early development — core data and intelligence pipeline under construction.**
 
-The current focus is on making the underlying data layer reliable before building the full intelligence product on top of it.
+The first development phase is focused on reliably transforming raw Solana transactions into structured trades and positions. Once this foundation is stable, MONFLUXO will build persistent wallet intelligence, token analysis and relationship detection on top of it.
 
-### Roadmap
+### Hackathon Roadmap
 
+#### Phase 1 — Data Foundation
 - [x] Solana transaction ingestion
+- [x] Helius integration
 - [x] Initial transaction parser
-- [x] Swap parsing
+- [x] Initial swap / trade parsing
 - [x] Position engine foundation
 - [ ] Robust BUY / SELL reconstruction
+- [ ] Persistent wallet indexing
+
+#### Phase 2 — Wallet Intelligence
 - [ ] Historical wallet analytics
 - [ ] Accurate realized / unrealized PnL
-- [ ] Token-level capital flow analysis
+- [ ] Best / worst trade analysis
+- [ ] Wallet performance metrics
+- [ ] Wallet funding and transfer history
+- [ ] Wallet behavioral profiles
+
+#### Phase 3 — Token Intelligence
+- [ ] Token-level buyer / seller analysis
+- [ ] Capital flow analysis
+- [ ] New-wallet detection
+- [ ] Token holder intelligence
+- [ ] Wallet clustering
+- [ ] Bundle / coordinated-activity signals
+
+#### Phase 4 — Relationship Intelligence
 - [ ] Wallet relationship graph
-- [ ] Wallet clustering / bundle signals
+- [ ] Common funding-source detection
+- [ ] Cross-wallet behavioral relationships
+- [ ] Coordinated trading detection
 - [ ] Intelligence scoring
+
+#### Phase 5 — MONFLUXO Product
 - [ ] Token intelligence dashboard
 - [ ] Wallet intelligence dashboard
+- [ ] Interactive wallet graph
 - [ ] AI Analyst
 - [ ] Real-time Radar
 - [ ] User accounts and monetization
+
+The immediate priority is **Phase 1**: make the underlying transaction and trade data reliable enough to support everything above it.
+
+---
+
+## 🎯 Hackathon MVP
+
+For the hackathon, MONFLUXO is intentionally focused on a narrow core experience rather than attempting to build the entire platform at once.
+
+The target flow is:
+
+`TOKEN → WALLETS → TRADES → PNL → RELATIONSHIPS → INTELLIGENCE`
+
+The MVP will demonstrate three connected capabilities:
+
+1. **Token Intelligence** — investigate the wallets and activity behind a Solana token.
+2. **Wallet Intelligence** — reconstruct a wallet's trading history and performance.
+3. **Relationship Intelligence** — identify observable connections and coordinated behavior between wallets.
+
+The goal is to demonstrate that MONFLUXO can move from raw on-chain data to an understandable explanation of what is happening.
 
 ---
 
