@@ -1,6 +1,7 @@
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const RAYDIUM_AMM_V4 = "675kPX9MHTjS2zt1qfr1NYHuZeLXfQM9H24yFSUt1Mp8";
+const JUPITER_ROUTER = "proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u";
 
 function toAmount(raw, decimals) {
   return Number(raw) / 10 ** decimals;
@@ -277,8 +278,13 @@ export function parseSwapTransaction(transaction, wallet) {
   if (!transaction?.meta) return null;
 
   const isRaydium = hasProgram(transaction, RAYDIUM_AMM_V4);
+  const isJupiter = hasProgram(transaction, JUPITER_ROUTER);
 
-  if (!isRaydium) return null;
+  if (!isRaydium && !isJupiter) return null;
+
+  const detectedDex = isRaydium
+    ? "raydium_amm_v4"
+    : "jupiter";
 
   const {
     tokenAccountMap,
@@ -351,7 +357,7 @@ export function parseSwapTransaction(transaction, wallet) {
       return {
         wallet,
         type: "BUY",
-        dex: "raydium_amm_v4",
+        dex: detectedDex,
         inputMint: WSOL_MINT,
         inputAmount,
         outputMint,
@@ -393,7 +399,7 @@ export function parseSwapTransaction(transaction, wallet) {
       return {
         wallet,
         type: "SELL",
-        dex: "raydium_amm_v4",
+        dex: detectedDex,
         inputMint,
         inputAmount,
         outputMint: WSOL_MINT,
