@@ -1,7 +1,11 @@
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPXxuEb";
 const RAYDIUM_AMM_V4 = "675kPX9MHTjS2zt1qfr1NYHuZeLXfQM9H24yFSUt1Mp8";
 const JUPITER_ROUTER = "proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u";
+const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+const PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+const PUMP_AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 
 function toAmount(raw, decimals) {
   return Number(raw) / 10 ** decimals;
@@ -127,6 +131,7 @@ function getSplTransfers(transaction) {
 
       if (
         (instruction?.programId === SPL_TOKEN_PROGRAM ||
+      instruction?.programId === TOKEN_2022_PROGRAM ||
           instruction?.program === "spl-token") &&
         (parsed?.type === "transfer" ||
           parsed?.type === "transferChecked") &&
@@ -201,6 +206,58 @@ function enrichTransferMints(transfers, tokenAccountMap) {
   }));
 }
 
+
+function getNativeSolTransfers(transaction, wallet, relevantPrograms = []) {
+  const transfers = [];
+  const relevant = new Set(relevantPrograms);
+
+  const processInstruction = (instruction) => {
+    const program =
+      instruction?.programId ||
+      instruction?.program;
+
+    const info = instruction?.parsed?.info;
+
+    if (
+      program !== "11111111111111111111111111111111" ||
+      instruction?.parsed?.type !== "transfer" ||
+      !info
+    ) {
+      return;
+    }
+
+    if (info.source !== wallet && info.destination !== wallet) {
+      return;
+    }
+
+    const lamports = BigInt(info.lamports || 0);
+    if (lamports <= 0n) return;
+
+    transfers.push({
+      source: info.source,
+      destination: info.destination,
+      lamports,
+      relevant:
+        relevant.size === 0 ||
+        relevant.has(info.source) ||
+        relevant.has(info.destination)
+    });
+  };
+
+  for (const instruction of
+    transaction?.transaction?.message?.instructions || []) {
+    processInstruction(instruction);
+  }
+
+  for (const group of transaction?.meta?.innerInstructions || []) {
+    for (const instruction of group.instructions || []) {
+      processInstruction(instruction);
+    }
+  }
+
+  return transfers;
+}
+
 function findWalletSwapLegs(transaction, wallet) {
   const tokenAccountMap = buildTokenAccountMap(transaction);
   const transfers = enrichTransferMints(
@@ -261,17 +318,30 @@ function findWalletSwapLegs(transaction, wallet) {
 }
 
 function hasProgram(transaction, programId) {
-  const instructions = transaction?.transaction?.message?.instructions || [];
   const accountKeys = getAllAccountKeys(transaction);
 
-  return instructions.some((instruction) => {
+  const outerInstructions =
+    transaction?.transaction?.message?.instructions || [];
+
+  const innerInstructions =
+    transaction?.meta?.innerInstructions || [];
+
+  const matches = (instruction) => {
     const resolvedProgramId =
       instruction?.programId ||
       instruction?.program ||
       getAccountKeyValue(accountKeys[instruction?.programIdIndex]);
 
     return resolvedProgramId === programId;
-  });
+  };
+
+  if (outerInstructions.some(matches)) {
+    return true;
+  }
+
+  return innerInstructions.some((group) =>
+    (group.instructions || []).some(matches)
+  );
 }
 
 export function parseSwapTransaction(transaction, wallet) {
@@ -279,12 +349,29 @@ export function parseSwapTransaction(transaction, wallet) {
 
   const isRaydium = hasProgram(transaction, RAYDIUM_AMM_V4);
   const isJupiter = hasProgram(transaction, JUPITER_ROUTER);
+  const isJupiterV6 = hasProgram(transaction, JUPITER_V6);
+  const isPumpFun = hasProgram(transaction, PUMP_FUN);
+  const isPumpAmm = hasProgram(transaction, PUMP_AMM);
 
-  if (!isRaydium && !isJupiter) return null;
 
-  const detectedDex = isRaydium
-    ? "raydium_amm_v4"
-    : "jupiter";
+  if (
+    !isRaydium &&
+    !isJupiter &&
+    !isJupiterV6 &&
+    !isPumpFun &&
+    !isPumpAmm
+  ) {
+    return null;
+  }
+
+  const detectedDex =
+    isJupiter || isJupiterV6
+      ? "jupiter"
+      : isRaydium
+        ? "raydium_amm_v4"
+        : isPumpAmm
+          ? "pump_amm"
+          : "pump_fun";
 
   const {
     tokenAccountMap,
@@ -293,11 +380,176 @@ export function parseSwapTransaction(transaction, wallet) {
     outputs
   } = findWalletSwapLegs(transaction, wallet);
 
+
   const wsolInput = inputs.find(([mint]) => mint === WSOL_MINT);
   const wsolOutput = outputs.find(([mint]) => mint === WSOL_MINT);
 
   const nonWsolInputs = inputs.filter(([mint]) => mint !== WSOL_MINT);
   const nonWsolOutputs = outputs.filter(([mint]) => mint !== WSOL_MINT);
+
+  // Jupiter/Orca SELL fallback:
+  // internal routing transfers can contain several token legs.
+  // Use the wallet-level token delta plus the wallet WSOL output.
+  const walletTokenOut = [...walletChanges.values()].filter(
+    (change) =>
+      change.mint !== WSOL_MINT &&
+      BigInt(change.rawChange) < 0n
+  );
+
+  if (walletTokenOut.length === 1 && wsolOutput) {
+    const change = walletTokenOut[0];
+
+    const inputMint = change.mint;
+    const inputRaw = -BigInt(change.rawChange);
+
+    const inputDecimals = getMintDecimals(
+      transaction,
+      inputMint,
+      tokenAccountMap
+    );
+
+    const outputDecimals = getMintDecimals(
+      transaction,
+      WSOL_MINT,
+      tokenAccountMap
+    );
+
+    const inputAmount = toAmount(
+      inputRaw.toString(),
+      inputDecimals
+    );
+
+    const outputAmount = toAmount(
+      wsolOutput[1].toString(),
+      outputDecimals
+    );
+
+    if (inputAmount > 0 && outputAmount > 0) {
+      return {
+        wallet,
+        type: "SELL",
+        dex: detectedDex,
+        inputMint,
+        inputAmount,
+        outputMint: WSOL_MINT,
+        outputAmount,
+        estimatedPriceSol: outputAmount / inputAmount,
+        feeSol: Number(transaction.meta?.fee || 0) / 1e9,
+        signature: getSignature(transaction),
+        blockTime: transaction.blockTime ?? null
+      };
+    }
+  }
+
+
+  // Native SOL fallback for protocols that do not use WSOL.
+  // We only consider transfers involving the wallet and choose the
+  // largest native-SOL movement in the swap direction.
+  const nativeSolTransfers = getNativeSolTransfers(
+    transaction,
+    wallet
+  );
+
+  const nativeSolInput = nativeSolTransfers
+    .filter(
+      (transfer) =>
+        transfer.source === wallet &&
+        transfer.destination !== wallet
+    )
+    .sort((a, b) => (a.lamports > b.lamports ? -1 : 1))[0];
+
+  const nativeSolOutput = nativeSolTransfers
+    .filter(
+      (transfer) =>
+        transfer.destination === wallet &&
+        transfer.source !== wallet
+    )
+    .sort((a, b) => (a.lamports > b.lamports ? -1 : 1))[0];
+
+  const nativeTokenOutput =
+    nonWsolOutputs.length === 1
+      ? nonWsolOutputs[0]
+      : null;
+
+  const nativeTokenInput =
+    nonWsolInputs.length === 1
+      ? nonWsolInputs[0]
+      : null;
+
+  // Native SOL -> token BUY
+  if (
+    !wsolInput &&
+    nativeSolInput &&
+    nativeTokenOutput
+  ) {
+    const [outputMint, outputRaw] = nativeTokenOutput;
+
+    const outputDecimals = getMintDecimals(
+      transaction,
+      outputMint,
+      tokenAccountMap
+    );
+
+    const inputAmount = Number(nativeSolInput.lamports) / 1e9;
+    const outputAmount = toAmount(
+      outputRaw.toString(),
+      outputDecimals
+    );
+
+    if (inputAmount > 0 && outputAmount > 0) {
+      return {
+        wallet,
+        type: "BUY",
+        dex: detectedDex,
+        inputMint: WSOL_MINT,
+        inputAmount,
+        outputMint,
+        outputAmount,
+        estimatedPriceSol: inputAmount / outputAmount,
+        feeSol: Number(transaction.meta.fee || 0) / 1e9,
+        signature: getSignature(transaction),
+        blockTime: transaction.blockTime ?? null
+      };
+    }
+  }
+
+  // token -> native SOL SELL
+  if (
+    !wsolOutput &&
+    nativeSolOutput &&
+    nativeTokenInput
+  ) {
+    const [inputMint, inputRaw] = nativeTokenInput;
+
+    const inputDecimals = getMintDecimals(
+      transaction,
+      inputMint,
+      tokenAccountMap
+    );
+
+    const inputAmount = toAmount(
+      inputRaw.toString(),
+      inputDecimals
+    );
+
+    const outputAmount = Number(nativeSolOutput.lamports) / 1e9;
+
+    if (inputAmount > 0 && outputAmount > 0) {
+      return {
+        wallet,
+        type: "SELL",
+        dex: detectedDex,
+        inputMint,
+        inputAmount,
+        outputMint: WSOL_MINT,
+        outputAmount,
+        estimatedPriceSol: outputAmount / inputAmount,
+        feeSol: Number(transaction.meta.fee || 0) / 1e9,
+        signature: getSignature(transaction),
+        blockTime: transaction.blockTime ?? null
+      };
+    }
+  }
 
   // Temporary WSOL accounts may disappear from pre/post token balances
   // after being closed. Use the wallet token delta as a conservative fallback.
@@ -329,9 +581,77 @@ export function parseSwapTransaction(transaction, wallet) {
             BigInt(fallbackTokenIn[0].rawChange)
           ];
 
-    const [outputMint, outputRaw] = effectiveOutput;
+    const fallbackTokenOut = walletNonWsolChanges.filter(
+  (change) => BigInt(change.rawChange) < 0n
+);
 
-    const outputDecimals = getMintDecimals(
+// Jupiter/Orca may route the SOL through a temporary WSOL account.
+// In that case there may be no directly detectable WSOL/native-SOL
+// transfer involving the wallet. Use the wallet's native balance delta.
+const accountKeys = getAllAccountKeys(transaction);
+const walletIndex = accountKeys.findIndex(
+  (key) => getAccountKeyValue(key) === wallet
+);
+
+let fallbackSolOutput = null;
+
+if (
+  fallbackTokenOut.length === 1 &&
+  walletIndex >= 0 &&
+  transaction?.meta?.preBalances?.[walletIndex] != null &&
+  transaction?.meta?.postBalances?.[walletIndex] != null
+) {
+  const preLamports = BigInt(transaction.meta.preBalances[walletIndex]);
+  const postLamports = BigInt(transaction.meta.postBalances[walletIndex]);
+  const feeLamports = BigInt(transaction.meta?.fee || 0);
+
+  const netChange = postLamports - preLamports;
+
+  // Restore the transaction fee because the balance delta is net of fee.
+  const grossOutput = netChange + feeLamports;
+
+  if (grossOutput > 0n) {
+    fallbackSolOutput = grossOutput;
+  }
+}
+
+if (fallbackTokenOut.length === 1 && fallbackSolOutput) {
+  const change = fallbackTokenOut[0];
+
+  const inputMint = change.mint;
+  const inputRaw = -BigInt(change.rawChange);
+
+  const inputDecimals = getMintDecimals(
+    transaction,
+    inputMint,
+    tokenAccountMap
+  );
+
+  const inputAmount = toAmount(
+    inputRaw.toString(),
+    inputDecimals
+  );
+
+  const outputAmount = Number(fallbackSolOutput) / 1e9;
+
+  if (inputAmount > 0 && outputAmount > 0) {
+    return {
+      wallet,
+      type: "SELL",
+      dex: detectedDex,
+      inputMint,
+      inputAmount,
+      outputMint: WSOL_MINT,
+      outputAmount,
+      estimatedPriceSol: outputAmount / inputAmount,
+      feeSol: Number(transaction.meta?.fee || 0) / 1e9,
+      signature: getSignature(transaction),
+      blockTime: transaction.blockTime ?? null
+    };
+  }
+}
+
+const outputDecimals = getMintDecimals(
       transaction,
       outputMint,
       tokenAccountMap
