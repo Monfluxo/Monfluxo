@@ -1,4 +1,4 @@
-import { getTransactionsForAddress } from "./helius.js";
+import { getTransactionsForAddress, getTransaction } from "./helius.js";
 import { parseSwapTransaction } from "./swapParser.js";
 import { getTradeSamples } from "./db.js";
 
@@ -182,4 +182,30 @@ for(const [i,x] of found.entries()){
       console.log("  "+t.source+" -> "+t.destination+" | "+t.amount+" | "+(t.mint || "?"));
     }
   }
+  // Canonical jsonParsed RPC inspection for the candidate.
+  try {
+    const parsedTx = await getTransaction(signatureOf(x.tx));
+    console.log("canonical jsonParsed instruction flow:");
+    for (const [j, ix] of (parsedTx?.transaction?.message?.instructions || []).entries()) {
+      console.log(
+        "  outer["+j+"] | program="+(ix?.program || ix?.programId || "?")+
+        " | type="+(ix?.parsed?.type || "raw")+
+        " | info="+JSON.stringify(ix?.parsed?.info || {})+
+        (ix?.data ? " | data="+ix.data : "")
+      );
+    }
+    for (const group of parsedTx?.meta?.innerInstructions || []) {
+      for (const [j, ix] of (group.instructions || []).entries()) {
+        console.log(
+          "  inner["+group.index+":"+j+"] | program="+(ix?.program || ix?.programId || "?")+
+          " | type="+(ix?.parsed?.type || "raw")+
+          " | info="+JSON.stringify(ix?.parsed?.info || {})+
+          (ix?.data ? " | data="+ix.data : "")
+        );
+      }
+    }
+  } catch (error) {
+    console.log("canonical jsonParsed inspection failed: "+error.message);
+  }
+
 }
