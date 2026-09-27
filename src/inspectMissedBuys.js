@@ -140,8 +140,14 @@ for(const [i,x] of found.entries()){
     const program = ix?.program || ix?.programId || "?";
     if (parsed) {
       console.log("  "+where+" | "+program+" | "+(parsed.type || "?")+" | "+JSON.stringify(info || {}));
-    } else if (ix?.programId || ix?.program) {
-      console.log("  "+where+" | "+program+" | raw");
+    } else {
+      const raw = {
+        programId: ix?.programId || null,
+        programIdIndex: ix?.programIdIndex ?? null,
+        accounts: ix?.accounts || null,
+        data: ix?.data || null
+      };
+      console.log("  "+where+" | "+program+" | raw | "+JSON.stringify(raw));
     }
   };
   for (const [j, ix] of (x.tx?.transaction?.message?.instructions || []).entries()) {
