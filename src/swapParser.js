@@ -7,6 +7,7 @@ const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 const PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 const PUMP_AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 const PUMP_COLLECT_CREATOR_FEE_V2_PREFIX = "bdpoExJbbLb";
+const PUMP_AMM_COLLECT_COIN_CREATOR_FEE_PREFIX = "ToNg27JNfmT";
 
 
 function resolveProgramId(instruction, accountKeys) {
@@ -26,32 +27,35 @@ export function parseCreatorFeeClaims(transaction, wallet) {
     const programId = resolveProgramId(instruction, accountKeys);
     const data = instruction?.data || "";
 
-    if (
-      programId !== PUMP_FUN ||
-      !data.startsWith(PUMP_COLLECT_CREATOR_FEE_V2_PREFIX) ||
-      !Array.isArray(instruction?.accounts) ||
-      instruction.accounts.length < 10
-    ) {
-      return;
-    }
+    const isPumpV2 =
+      programId === PUMP_FUN &&
+      data.startsWith(PUMP_COLLECT_CREATOR_FEE_V2_PREFIX) &&
+      Array.isArray(instruction?.accounts) &&
+      instruction.accounts.length >= 10;
+
+    const isPumpAmm =
+      programId === PUMP_AMM &&
+      data.startsWith(PUMP_AMM_COLLECT_COIN_CREATOR_FEE_PREFIX) &&
+      Array.isArray(instruction?.accounts) &&
+      instruction.accounts.length >= 8;
+
+    if (!isPumpV2 && !isPumpAmm) return;
 
     const accounts = instruction.accounts.map((index) =>
       typeof index === "number" ? getAccountKeyValue(accountKeys[index]) : index
     );
 
-    const creator = accounts[0] || wallet;
-    const creatorTokenAccount = accounts[1] || null;
-    const creatorVault = accounts[2] || null;
-    const creatorVaultTokenAccount = accounts[3] || null;
-    const quoteMint = accounts[4] || null;
-    const quoteTokenProgram = accounts[5] || null;
+    const creator = isPumpV2 ? accounts[0] : accounts[2];
+    const creatorTokenAccount = isPumpV2 ? accounts[1] : accounts[5];
+    const creatorVault = isPumpV2 ? accounts[2] : accounts[3];
+    const creatorVaultTokenAccount = isPumpV2 ? accounts[3] : accounts[4];
+    const quoteMint = isPumpV2 ? accounts[4] : accounts[0];
+    const quoteTokenProgram = isPumpV2 ? accounts[5] : accounts[1];
 
-    if (creator !== wallet) {
-      return;
-    }
+    if (creator !== wallet) return;
 
     let rawAmount = 0n;
-    let decimals = 0;
+    let decimals = quoteMint === WSOL_MINT ? 9 : 0;
 
     const innerGroup = (transaction?.meta?.innerInstructions || [])
       .find((group) => group.index === outerIndex);
@@ -92,7 +96,7 @@ export function parseCreatorFeeClaims(transaction, wallet) {
     claims.push({
       wallet,
       type: "CREATOR_FEE_CLAIM",
-      dex: "pump_fun",
+      dex: isPumpV2 ? "pump_fun" : "pump_amm",
       quoteMint,
       quoteTokenProgram,
       amount: toAmount(rawAmount.toString(), decimals),
@@ -105,13 +109,14 @@ export function parseCreatorFeeClaims(transaction, wallet) {
       signature: getSignature(transaction),
       blockTime: transaction?.blockTime ?? null,
       instructionIndex: outerIndex,
-      parser: "pump_collect_creator_fee_v2"
+      parser: isPumpV2
+        ? "pump_collect_creator_fee_v2"
+        : "pump_collect_coin_creator_fee"
     });
   });
 
   return claims;
 }
-
 function toAmount(raw, decimals) {
   return Number(raw) / 10 ** decimals;
 }
