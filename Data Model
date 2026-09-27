@@ -230,6 +230,29 @@ The Trade entity is derived by MONFLUXO.
 
 ---
 
+# 8.1 Creator Reward
+
+A Creator Reward represents fees claimed by a wallet because it is the creator or fee recipient of a Pump coin.
+
+Creator rewards are **not trades** and must not affect BUY/SELL counts, position cost basis, or PnL.
+
+### Core fields
+
+```text
+CreatorReward
+├── wallet
+├── transaction
+├── timestamp
+├── reward_type
+├── quote_asset
+├── amount
+├── token_program
+├── creator
+└── source
+```
+
+For Pump creator fees, the quote asset can be SOL/WSOL or another supported quote asset. Pump documents separate creator-fee vaults for bonding curves and PumpSwap AMM pools, so the rewards layer should remain independent from the trade layer. citeturn2search0
+
 # 9. Position
 
 A Position represents a wallet's exposure to a token over time.
