@@ -33,6 +33,8 @@ export function buildPositions(trades) {
         realizedCostBasis: 0,
         feesSol: 0,
         matchedSoldTokens: 0,
+        unmatchedSoldTokens: 0,
+        unmatchedSellProceedsSol: 0,
         holdingSecondsWeighted: 0,
         firstBlockTime: trade.blockTime ?? null,
         lastBlockTime: trade.blockTime ?? null,
@@ -106,12 +108,19 @@ export function buildPositions(trades) {
       }
     }
 
-    if (remainingToSell > EPSILON) {
-      position.unmatchedSoldTokens =
-        (position.unmatchedSoldTokens || 0) + remainingToSell;
-    }
+    const matchedProceeds =
+      trade.tokenAmount > EPSILON
+        ? trade.solAmount * Math.min(1, (trade.tokenAmount - remainingToSell) / trade.tokenAmount)
+        : 0;
 
-    position.realizedPnl += trade.solAmount - costOfSoldTokens;
+    position.realizedPnl += matchedProceeds - costOfSoldTokens;
+
+    if (remainingToSell > EPSILON) {
+      position.unmatchedSoldTokens += remainingToSell;
+
+      const unmatchedProceeds = Math.max(0, trade.solAmount - matchedProceeds);
+      position.unmatchedSellProceedsSol += unmatchedProceeds;
+    }
   }
 
   for (const position of positions.values()) {
@@ -152,8 +161,9 @@ export function buildPositions(trades) {
 
     delete position.lots;
 
-    if (!position.unmatchedSoldTokens) {
+    if (position.unmatchedSoldTokens <= EPSILON) {
       delete position.unmatchedSoldTokens;
+      delete position.unmatchedSellProceedsSol;
     }
   }
 
