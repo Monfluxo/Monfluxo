@@ -106,8 +106,12 @@ export async function analyzeWallet(address, options = {}) {
     if (position.realizedPnl < 0) losingPositions++;
 
     const summary = summarizePosition(position);
-    if (!best || position.realizedPnl > best.realizedPnl) best = summary;
-    if (!worst || position.realizedPnl < worst.realizedPnl) worst = summary;
+    if (!best || position.realizedPnl > Number(best.realizedPnlSol ?? -Infinity)) {
+      best = summary;
+    }
+    if (!worst || position.realizedPnl < Number(worst.realizedPnlSol ?? Infinity)) {
+      worst = summary;
+    }
   }
 
   const matchedPositions = winningPositions + losingPositions;
