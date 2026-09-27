@@ -102,7 +102,6 @@ export async function analyzeWallet(address, options = {}) {
   let feesSol = 0;
   const creatorRewardsByMint = {};
   let creatorRewardCount = 0;
-  let creatorRewardTotal = 0;
   let unmatchedSellProceedsSol = 0;
   let unmatchedSoldTokens = 0;
   let openPositions = 0;
@@ -113,7 +112,6 @@ export async function analyzeWallet(address, options = {}) {
   const dexCounts = {};
   for (const reward of rewards) {
     creatorRewardCount++;
-    creatorRewardTotal += reward.amount;
     creatorRewardsByMint[reward.quoteMint] = (creatorRewardsByMint[reward.quoteMint] || 0) + reward.amount;
   }
 
@@ -160,7 +158,6 @@ export async function analyzeWallet(address, options = {}) {
     generatedAt: new Date().toISOString(),
     tradesAnalyzed: trades.length,
     creatorRewardCount,
-    creatorRewardTotal: round(creatorRewardTotal),
     creatorRewardsByMint,
     buyCount: tradeTypeCounts.BUY,
     sellCount: tradeTypeCounts.SELL,
