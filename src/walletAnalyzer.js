@@ -38,9 +38,11 @@ function summarizePosition(position) {
     solSpent: round(position.solSpent),
     solReceived: round(position.solReceived),
     realizedPnlSol: round(position.realizedPnl),
-    realizedRoi: round(position.realizedRoi * 100, 2),
+    realizedRoi: position.realizedRoi == null ? null : round(position.realizedRoi * 100, 2),
     unrealizedPnlSol: round(position.unrealizedPnl),
     totalPnlSol: round(position.totalPnl),
+    unmatchedSoldTokens: round(position.unmatchedSoldTokens || 0),
+    unmatchedSellProceedsSol: round(position.unmatchedSellProceedsSol || 0),
     open: position.open,
     avgHoldingSeconds: round(position.avgHoldingSeconds, 1),
     lastPriceSol: round(position.lastPriceSol, 12)
@@ -76,12 +78,12 @@ export async function analyzeWallet(address, options = {}) {
   let grossBuyVolumeSol = 0;
   let grossSellVolumeSol = 0;
   let feesSol = 0;
+  let unmatchedSellProceedsSol = 0;
+  let unmatchedSoldTokens = 0;
   let openPositions = 0;
   let closedPositions = 0;
   let winningPositions = 0;
   let losingPositions = 0;
-  let best = null;
-  let worst = null;
 
   const dexCounts = {};
   const tradeTypeCounts = { BUY: 0, SELL: 0 };
@@ -98,27 +100,26 @@ export async function analyzeWallet(address, options = {}) {
     realizedPnl += position.realizedPnl;
     unrealizedPnl += position.unrealizedPnl;
     totalPnl += position.totalPnl;
+    unmatchedSellProceedsSol += position.unmatchedSellProceedsSol || 0;
+    unmatchedSoldTokens += position.unmatchedSoldTokens || 0;
 
     if (position.open) openPositions++;
     else closedPositions++;
 
     if (position.realizedPnl > 0) winningPositions++;
     if (position.realizedPnl < 0) losingPositions++;
-
-    const summary = summarizePosition(position);
-    if (!best || position.realizedPnl > Number(best.realizedPnlSol ?? -Infinity)) {
-      best = summary;
-    }
-    if (!worst || position.realizedPnl < Number(worst.realizedPnlSol ?? Infinity)) {
-      worst = summary;
-    }
   }
+
+  const rankedPositions = [...positionList]
+    .sort((a, b) => b.totalPnl - a.totalPnl);
+
+  const bestTrades = rankedPositions.slice(0, 3).map(summarizePosition);
+  const worstTrades = rankedPositions.slice(-3).reverse().map(summarizePosition);
 
   const matchedPositions = winningPositions + losingPositions;
   const openTokens = positionList.filter((position) => position.open);
 
-  const topPositions = [...positionList]
-    .sort((a, b) => b.totalPnl - a.totalPnl)
+  const topPositions = rankedPositions
     .slice(0, 10)
     .map(summarizePosition);
 
@@ -137,6 +138,8 @@ export async function analyzeWallet(address, options = {}) {
     realizedPnlSol: round(realizedPnl),
     unrealizedPnlSol: round(unrealizedPnl),
     totalPnlSol: round(totalPnl),
+    unmatchedSoldTokens: round(unmatchedSoldTokens),
+    unmatchedSellProceedsSol: round(unmatchedSellProceedsSol),
     openPositions,
     closedPositions,
     winningPositions,
@@ -144,8 +147,10 @@ export async function analyzeWallet(address, options = {}) {
     winRate: matchedPositions > 0 ? round((winningPositions / matchedPositions) * 100, 2) : null,
     openExposureCostSol: round(openTokens.reduce((sum, position) => sum + position.remainingCostSol, 0)),
     openMarkedValueSol: round(openTokens.reduce((sum, position) => sum + position.unrealizedValueSol, 0)),
-    best,
-    worst,
+    best: bestTrades[0] || null,
+    worst: worstTrades[0] || null,
+    bestTrades,
+    worstTrades,
     dexCounts,
     topPositions
   };
