@@ -133,6 +133,14 @@ for(const [i,x] of found.entries()){
   for (const group of x.tx?.meta?.innerInstructions || [])
     for (const ix of group.instructions || []) addSpl(ix);
 
+  console.log("account keys:");
+  const debugKeys = [
+    ...(x.tx?.transaction?.message?.accountKeys || []),
+    ...(x.tx?.meta?.loadedAddresses?.writable || []),
+    ...(x.tx?.meta?.loadedAddresses?.readonly || [])
+  ];
+  debugKeys.forEach((k, idx) => console.log("  ["+idx+"] "+keyValue(k)));
+
   console.log("instruction flow:");
   const summarizeIx = (ix, where) => {
     const parsed = ix?.parsed;
