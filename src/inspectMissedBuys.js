@@ -145,7 +145,16 @@ for(const [i,x] of found.entries()){
   const summarizeIx = (ix, where) => {
     const parsed = ix?.parsed;
     const info = parsed?.info;
-    const program = ix?.program || ix?.programId || "?";
+    const accountKeysForDebug = [
+      ...(x.tx?.transaction?.message?.accountKeys || []),
+      ...(x.tx?.meta?.loadedAddresses?.writable || []),
+      ...(x.tx?.meta?.loadedAddresses?.readonly || [])
+    ];
+    const resolvedProgram =
+      ix?.programId ||
+      ix?.program ||
+      keyValue(accountKeysForDebug[ix?.programIdIndex]);
+    const program = resolvedProgram || "?";
     if (parsed) {
       console.log("  "+where+" | "+program+" | "+(parsed.type || "?")+" | "+JSON.stringify(info || {}));
     } else {
