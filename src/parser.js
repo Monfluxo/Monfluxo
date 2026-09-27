@@ -87,7 +87,11 @@ function getTokenChanges(transaction, wallet) {
 
 function getSolChange(transaction, wallet) {
   const meta = transaction?.meta;
-  const accountKeys = transaction?.transaction?.message?.accountKeys || [];
+  const accountKeys = [
+    ...(transaction?.transaction?.message?.accountKeys || []),
+    ...(transaction?.meta?.loadedAddresses?.writable || []),
+    ...(transaction?.meta?.loadedAddresses?.readonly || [])
+  ];
 
   const walletIndex = accountKeys.findIndex(
     (key) => getAccountKeyValue(key) === wallet
