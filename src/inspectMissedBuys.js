@@ -86,4 +86,57 @@ for(const [i,x] of found.entries()){
   const post=wi>=0?BigInt(x.tx?.meta?.postBalances?.[wi]||0):0n;
   const gross=-(post-pre+BigInt(x.tx?.meta?.fee||0));
   console.log("walletIndex: "+wi+" | gross SOL input: "+(Number(gross)/1e9));
+  const allTokenBalances = [
+    ...(x.tx?.meta?.preTokenBalances || []).map(b => ({...b, side:"pre"})),
+    ...(x.tx?.meta?.postTokenBalances || []).map(b => ({...b, side:"post"}))
+  ].filter(b => b?.owner === address && b?.mint && b.mint !== WSOL_MINT);
+
+  const tokenSummary = new Map();
+  for (const b of allTokenBalances) {
+    const key = b.mint;
+    const current = tokenSummary.get(key) || { pre: 0n, post: 0n, decimals: b.uiTokenAmount?.decimals ?? 0 };
+    const amount = BigInt(b.uiTokenAmount?.amount || "0");
+    if (b.side === "pre") current.pre += amount;
+    else current.post += amount;
+    tokenSummary.set(key, current);
+  }
+
+  console.log("token deltas:");
+  for (const [mint, v] of tokenSummary) {
+    const delta = v.post - v.pre;
+    if (delta !== 0n) {
+      console.log("  "+mint+" | "+(Number(delta)/10**v.decimals)+" tokens | raw "+delta.toString());
+    }
+  }
+
+  const splTransfers = [];
+  const addSpl = (instruction) => {
+    const parsed = instruction?.parsed;
+    const info = parsed?.info;
+    const program = instruction?.program || instruction?.programId;
+    if (
+      (program === "spl-token" || program === "spl-token-2022" ||
+       program === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" ||
+       program === "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPXxuEb") &&
+      (parsed?.type === "transfer" || parsed?.type === "transferChecked") &&
+      info?.source && info?.destination
+    ) {
+      splTransfers.push({
+        source: info.source,
+        destination: info.destination,
+        amount: String(info.amount ?? info.tokenAmount?.amount ?? "0"),
+        mint: info.mint || info.tokenAmount?.mint || null
+      });
+    }
+  };
+  for (const ix of x.tx?.transaction?.message?.instructions || []) addSpl(ix);
+  for (const group of x.tx?.meta?.innerInstructions || [])
+    for (const ix of group.instructions || []) addSpl(ix);
+
+  console.log("SPL transfers involving wallet:");
+  for (const t of splTransfers) {
+    if (t.source === address || t.destination === address) {
+      console.log("  "+t.source+" -> "+t.destination+" | "+t.amount+" | "+(t.mint || "?"));
+    }
+  }
 }
