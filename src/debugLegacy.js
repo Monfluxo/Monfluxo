@@ -1,5 +1,6 @@
 import { getTransaction } from "./helius.js";
 import { parseTransaction } from "./parser.js";
+import { parseSwapTransaction } from "./swapParser.js";
 import { getWalletTradePage, getTradeSamples } from "./db.js";
 
 let address = process.argv[2];
@@ -86,6 +87,17 @@ for (const row of legacyRows.slice(0, samples)) {
   try {
     const tx = await getTransaction(row.signature);
     const analysis = parseTransaction(tx, address);
+    const swap = parseSwapTransaction(tx, address);
+    const allKeys = [
+      ...(tx?.transaction?.message?.accountKeys || []),
+      ...(tx?.meta?.loadedAddresses?.writable || []),
+      ...(tx?.meta?.loadedAddresses?.readonly || [])
+    ];
+    const walletIndex = allKeys.findIndex((k) => keyValue(k) === address);
+    const walletTokenBalances = [
+      ...(tx?.meta?.preTokenBalances || []),
+      ...(tx?.meta?.postTokenBalances || [])
+    ].filter((x) => x.owner === address);
     const programs = programIds(tx);
     const tokens = tokenSummary(tx, address);
 
@@ -104,6 +116,7 @@ for (const row of legacyRows.slice(0, samples)) {
     console.log(row.signature);
     console.log(`stored: ${row.type} | ${row.token_mint} | ${row.dex || "NULL"}`);
     console.log(`reparse: ${analysis?.trade ? `${analysis.trade.type} | ${analysis.trade.tokenMint} | ${analysis.trade.parser} | ${analysis.trade.dex || "NULL"}` : "NO TRADE"}`);
+    console.log(`swapParser: ${swap ? `${swap.type} | ${swap.inputMint} -> ${swap.outputMint} | ${swap.dex}` : "NULL"} | walletIndex=${walletIndex} | walletTokenBalances=${walletTokenBalances.length}`);
     console.log(`SOL delta: ${solDelta}`);
     console.log("wallet token deltas:", JSON.stringify(tokens));
     console.log("programs:", programs.join(", "));
