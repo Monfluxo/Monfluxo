@@ -371,16 +371,10 @@ export function parseSwapTransaction(transaction, wallet) {
   const isPumpAmm = hasProgram(transaction, PUMP_AMM);
 
 
-  if (
-    !isRaydium &&
-    !isJupiter &&
-    !isJupiterV6 &&
-    !isPumpFun &&
-    !isPumpAmm
-  ) {
-    return null;
-  }
-
+  // Do not require a known DEX program here.
+  // A swap can be routed through an unsupported/unknown protocol while
+  // still exposing enough wallet-level token/SOL legs to identify it safely.
+  // Known protocols keep their explicit label; otherwise we return "unknown".
   const detectedDex =
     isJupiter || isJupiterV6
       ? "jupiter"
@@ -388,7 +382,9 @@ export function parseSwapTransaction(transaction, wallet) {
         ? "raydium_amm_v4"
         : isPumpAmm
           ? "pump_amm"
-          : "pump_fun";
+          : isPumpFun
+            ? "pump_fun"
+            : "unknown";
 
   const {
     tokenAccountMap,
