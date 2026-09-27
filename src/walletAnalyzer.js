@@ -1,5 +1,5 @@
 import { syncWalletHistory } from "./sync.js";
-import { getWalletTradePage, upsertAnalysisCache } from "./db.js";
+import { getWalletTradePage, getTradeSamples, upsertAnalysisCache } from "./db.js";
 import { buildPositions } from "./positionEngine.js";
 
 function mapTrade(row) {
@@ -13,10 +13,7 @@ function mapTrade(row) {
     tokenMint: row.token_mint,
     tokenAmount: Number(row.token_amount),
     solAmount: Number(row.sol_amount),
-    estimatedPriceSol:
-      row.estimated_price_sol == null
-        ? null
-        : Number(row.estimated_price_sol),
+    estimatedPriceSol: row.estimated_price_sol == null ? null : Number(row.estimated_price_sol),
     feeSol: row.fee_sol == null ? null : Number(row.fee_sol),
     dex: row.dex,
     parser: row.parser
@@ -55,19 +52,16 @@ export async function analyzeWallet(address, options = {}) {
   const sync = await syncWalletHistory(address, { mode });
 
   const pageSize = 1000;
-  const maxRows =
-    mode === "quick"
-      ? Number(process.env.MAX_QUICK_TRADE_ROWS || 5000)
-      : Number(process.env.MAX_DEEP_TRADE_ROWS || 500000);
+  const maxRows = mode === "quick"
+    ? Number(process.env.MAX_QUICK_TRADE_ROWS || 5000)
+    : Number(process.env.MAX_DEEP_TRADE_ROWS || 500000);
 
   const trades = [];
 
   for (let offset = 0; offset < maxRows; offset += pageSize) {
     const rows = await getWalletTradePage(address, pageSize, offset);
     if (!rows.length) break;
-
     trades.push(...rows.map(mapTrade));
-
     if (rows.length < pageSize) break;
   }
 
@@ -94,15 +88,10 @@ export async function analyzeWallet(address, options = {}) {
 
   for (const trade of trades) {
     tradeTypeCounts[trade.type] = (tradeTypeCounts[trade.type] || 0) + 1;
-
     if (trade.type === "BUY") grossBuyVolumeSol += trade.solAmount;
     if (trade.type === "SELL") grossSellVolumeSol += trade.solAmount;
-
     feesSol += trade.feeSol || 0;
-
-    if (trade.dex) {
-      dexCounts[trade.dex] = (dexCounts[trade.dex] || 0) + 1;
-    }
+    if (trade.dex) dexCounts[trade.dex] = (dexCounts[trade.dex] || 0) + 1;
   }
 
   for (const position of positionList) {
@@ -117,14 +106,8 @@ export async function analyzeWallet(address, options = {}) {
     if (position.realizedPnl < 0) losingPositions++;
 
     const summary = summarizePosition(position);
-
-    if (!best || position.realizedPnl > best.realizedPnl) {
-      best = summary;
-    }
-
-    if (!worst || position.realizedPnl < worst.realizedPnl) {
-      worst = summary;
-    }
+    if (!best || position.realizedPnl > best.realizedPnl) best = summary;
+    if (!worst || position.realizedPnl < worst.realizedPnl) worst = summary;
   }
 
   const matchedPositions = winningPositions + losingPositions;
@@ -139,37 +122,24 @@ export async function analyzeWallet(address, options = {}) {
     wallet: address,
     mode,
     generatedAt: new Date().toISOString(),
-
     tradesAnalyzed: trades.length,
     buyCount: tradeTypeCounts.BUY,
     sellCount: tradeTypeCounts.SELL,
     uniqueTokens: positions.size,
-
     grossBuyVolumeSol: round(grossBuyVolumeSol),
     grossSellVolumeSol: round(grossSellVolumeSol),
     totalVolumeSol: round(grossBuyVolumeSol + grossSellVolumeSol),
     feesSol: round(feesSol),
-
     realizedPnlSol: round(realizedPnl),
     unrealizedPnlSol: round(unrealizedPnl),
     totalPnlSol: round(totalPnl),
-
     openPositions,
     closedPositions,
     winningPositions,
     losingPositions,
-    winRate:
-      matchedPositions > 0
-        ? round((winningPositions / matchedPositions) * 100, 2)
-        : null,
-
-    openExposureCostSol: round(
-      openTokens.reduce((sum, position) => sum + position.remainingCostSol, 0)
-    ),
-    openMarkedValueSol: round(
-      openTokens.reduce((sum, position) => sum + position.unrealizedValueSol, 0)
-    ),
-
+    winRate: matchedPositions > 0 ? round((winningPositions / matchedPositions) * 100, 2) : null,
+    openExposureCostSol: round(openTokens.reduce((sum, position) => sum + position.remainingCostSol, 0)),
+    openMarkedValueSol: round(openTokens.reduce((sum, position) => sum + position.unrealizedValueSol, 0)),
     best,
     worst,
     dexCounts,
@@ -187,12 +157,19 @@ export async function analyzeWallet(address, options = {}) {
 }
 
 if (process.argv[1]?.endsWith("walletAnalyzer.js")) {
-  const address = process.argv[2];
+  let address = process.argv[2];
   const mode = process.argv[3] || "quick";
 
   if (!address) {
-    console.error("Usage: npm run analyze:wallet -- <wallet_address> [quick|deep]");
-    process.exit(1);
+    const samples = await getTradeSamples(1);
+    address = samples[0]?.wallet_address || null;
+
+    if (!address) {
+      console.error("No hay ninguna wallet con trades en Supabase.");
+      process.exit(1);
+    }
+
+    console.log(`Wallet seleccionada automáticamente desde Supabase: ${address}`);
   }
 
   try {
