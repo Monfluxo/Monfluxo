@@ -5,7 +5,8 @@ import {
   getSyncState,
   upsertSyncState,
   upsertTransactions,
-  upsertTrades
+  upsertTrades,
+  upsertRewards
 } from "./db.js";
 
 function signatureOf(tx) {
@@ -31,6 +32,25 @@ function normalizedTransaction(wallet, tx, analysis, storeRaw) {
   };
 }
 
+function normalizedReward(wallet, reward) {
+  return {
+    wallet_address: wallet,
+    signature: reward.signature,
+    block_time: isoFromBlockTime(reward.blockTime),
+    reward_type: "CREATOR_FEE",
+    quote_mint: reward.quoteMint,
+    quote_token_program: reward.quoteTokenProgram,
+    amount: reward.amount,
+    raw_amount: reward.rawAmount,
+    decimals: reward.decimals,
+    creator: reward.creator,
+    creator_token_account: reward.creatorTokenAccount,
+    creator_vault: reward.creatorVault,
+    creator_vault_token_account: reward.creatorVaultTokenAccount,
+    instruction_index: reward.instructionIndex,
+    source: reward.parser
+  };
+}
 function normalizedTrade(wallet, trade) {
   return {
     wallet_address: wallet,
@@ -91,6 +111,7 @@ export async function syncWalletHistory(address, options = {}) {
 
       const txRows = [];
       const tradeRows = [];
+      const rewardRows = [];
 
       for (const tx of transactions) {
         const signature = signatureOf(tx);
@@ -114,6 +135,12 @@ export async function syncWalletHistory(address, options = {}) {
           tradeRows.push(normalizedTrade(address, analysis.trade));
         }
 
+        if (analysis?.type === "CREATOR_FEE_CLAIM") {
+          for (const reward of analysis.rewards || []) {
+            rewardRows.push(normalizedReward(address, reward));
+          }
+        }
+
         if (typeof tx?.blockTime === "number") {
           if (!newest || tx.blockTime > newest.blockTime) {
             newest = { blockTime: tx.blockTime, signature };
@@ -126,6 +153,7 @@ export async function syncWalletHistory(address, options = {}) {
 
       await upsertTransactions(txRows);
       await upsertTrades(tradeRows);
+      await upsertRewards(rewardRows);
       total += txRows.length;
 
       if (stoppedOnExisting) break;
