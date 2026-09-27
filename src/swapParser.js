@@ -6,6 +6,111 @@ const JUPITER_ROUTER = "proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u";
 const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 const PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 const PUMP_AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
+const PUMP_COLLECT_CREATOR_FEE_V2_PREFIX = "bdpoExJbbLb";
+
+
+function resolveProgramId(instruction, accountKeys) {
+  return (
+    instruction?.programId ||
+    instruction?.program ||
+    getAccountKeyValue(accountKeys[instruction?.programIdIndex])
+  );
+}
+
+function parseCreatorFeeClaims(transaction, wallet) {
+  const accountKeys = getAllAccountKeys(transaction);
+  const claims = [];
+  const outerInstructions = transaction?.transaction?.message?.instructions || [];
+
+  outerInstructions.forEach((instruction, outerIndex) => {
+    const programId = resolveProgramId(instruction, accountKeys);
+    const data = instruction?.data || "";
+
+    if (
+      programId !== PUMP_FUN ||
+      !data.startsWith(PUMP_COLLECT_CREATOR_FEE_V2_PREFIX) ||
+      !Array.isArray(instruction?.accounts) ||
+      instruction.accounts.length < 10
+    ) {
+      return;
+    }
+
+    const accounts = instruction.accounts.map((index) =>
+      typeof index === "number" ? getAccountKeyValue(accountKeys[index]) : index
+    );
+
+    const creator = accounts[0] || wallet;
+    const creatorTokenAccount = accounts[1] || null;
+    const creatorVault = accounts[2] || null;
+    const creatorVaultTokenAccount = accounts[3] || null;
+    const quoteMint = accounts[4] || null;
+    const quoteTokenProgram = accounts[5] || null;
+
+    if (creator !== wallet) {
+      return;
+    }
+
+    let rawAmount = 0n;
+    let decimals = 0;
+
+    const innerGroup = (transaction?.meta?.innerInstructions || [])
+      .find((group) => group.index === outerIndex);
+
+    for (const inner of innerGroup?.instructions || []) {
+      const parsed = inner?.parsed;
+      const info = parsed?.info;
+      const program = inner?.program || inner?.programId;
+
+      if (
+        (program === "spl-token" ||
+          program === "spl-token-2022" ||
+          program === SPL_TOKEN_PROGRAM ||
+          program === TOKEN_2022_PROGRAM) &&
+        (parsed?.type === "transfer" || parsed?.type === "transferChecked") &&
+        info?.source === creatorVaultTokenAccount &&
+        info?.destination === creatorTokenAccount
+      ) {
+        rawAmount += BigInt(info.amount ?? info.tokenAmount?.amount ?? "0");
+        decimals = Number(
+          info.decimals ??
+          info.tokenAmount?.decimals ??
+          getMintDecimals(transaction, quoteMint, buildTokenAccountMap(transaction))
+        );
+      }
+
+      if (
+        program === "11111111111111111111111111111111" &&
+        parsed?.type === "transfer" &&
+        info?.source === creatorVault &&
+        info?.destination === creator
+      ) {
+        rawAmount += BigInt(info.lamports || 0);
+        decimals = 9;
+      }
+    }
+
+    claims.push({
+      wallet,
+      type: "CREATOR_FEE_CLAIM",
+      dex: "pump_fun",
+      quoteMint,
+      quoteTokenProgram,
+      amount: toAmount(rawAmount.toString(), decimals),
+      rawAmount: rawAmount.toString(),
+      decimals,
+      creator,
+      creatorTokenAccount,
+      creatorVault,
+      creatorVaultTokenAccount,
+      signature: getSignature(transaction),
+      blockTime: transaction?.blockTime ?? null,
+      instructionIndex: outerIndex,
+      parser: "pump_collect_creator_fee_v2"
+    });
+  });
+
+  return claims;
+}
 
 function toAmount(raw, decimals) {
   return Number(raw) / 10 ** decimals;
@@ -408,6 +513,11 @@ function hasProgram(transaction, programId) {
 
 export function parseSwapTransaction(transaction, wallet) {
   if (!transaction?.meta) return null;
+
+  // Creator-fee claims are not swaps. Detect them before any balance-based
+  // BUY/SELL heuristic so fee withdrawals can never become false trades.
+  const creatorFeeClaims = parseCreatorFeeClaims(transaction, wallet);
+  if (creatorFeeClaims.length > 0) return null;
 
   const isRaydium = hasProgram(transaction, RAYDIUM_AMM_V4);
   const isJupiter = hasProgram(transaction, JUPITER_ROUTER);
