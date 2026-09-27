@@ -1,4 +1,4 @@
-import { parseSwapTransaction } from "./swapParser.js";
+import { parseSwapTransaction, parseCreatorFeeClaims } from "./swapParser.js";
 
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const SOL_TRADE_EPSILON = 0.00001;
@@ -184,6 +184,19 @@ function buildLegacyTrade(transaction, wallet, type, tokenChange, solChange) {
 export function parseTransaction(transaction, wallet) {
   if (!transaction?.meta) {
     return result("OTHER", { reason: "Missing transaction metadata" });
+  }
+
+  // Creator fee withdrawals are rewards, not trades. Detect them before
+  // any swap or legacy balance heuristic so a fee claim can never become a BUY.
+  const creatorFeeClaims = parseCreatorFeeClaims(transaction, wallet);
+
+  if (creatorFeeClaims.length > 0) {
+    return result("CREATOR_FEE_CLAIM", {
+      reason: "Pump collect_creator_fee_v2",
+      tokenChanges: getTokenChanges(transaction, wallet),
+      solChange: getSolChange(transaction, wallet),
+      rewards: creatorFeeClaims
+    });
   }
 
   // First use instruction-level swap extraction for supported DEXes.
