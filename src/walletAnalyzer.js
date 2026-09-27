@@ -1,5 +1,5 @@
 import { syncWalletHistory } from "./sync.js";
-import { getWalletTradePage, getTradeSamples, upsertAnalysisCache } from "./db.js";
+import { getWalletTradePage, getWalletRewardsPage, getTradeSamples, upsertAnalysisCache } from "./db.js";
 import { buildPositions } from "./positionEngine.js";
 
 function mapTrade(row) {
@@ -20,6 +20,19 @@ function mapTrade(row) {
   };
 }
 
+function mapReward(row) {
+  return {
+    wallet: row.wallet_address,
+    signature: row.signature,
+    blockTime: row.block_time ? Math.floor(new Date(row.block_time).getTime() / 1000) : null,
+    rewardType: row.reward_type,
+    quoteMint: row.quote_mint,
+    amount: Number(row.amount),
+    decimals: Number(row.decimals || 0),
+    creator: row.creator,
+    instructionIndex: Number(row.instruction_index),
+  };
+}
 function round(value, decimals = 6) {
   if (!Number.isFinite(value)) return null;
   const factor = 10 ** decimals;
@@ -59,6 +72,7 @@ export async function analyzeWallet(address, options = {}) {
     : Number(process.env.MAX_DEEP_TRADE_ROWS || 500000);
 
   const trades = [];
+  const rewards = [];
 
   for (let offset = 0; offset < maxRows; offset += pageSize) {
     const rows = await getWalletTradePage(address, pageSize, offset);
@@ -67,8 +81,16 @@ export async function analyzeWallet(address, options = {}) {
     if (rows.length < pageSize) break;
   }
 
-  trades.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0));
 
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const rows = await getWalletRewardsPage(address, pageSize, offset);
+    if (!rows.length) break;
+    rewards.push(...rows.map(mapReward));
+    if (rows.length < pageSize) break;
+  }
+
+  trades.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0));
+  rewards.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0));
   const positions = buildPositions(trades);
   const positionList = [...positions.values()];
 
@@ -78,6 +100,9 @@ export async function analyzeWallet(address, options = {}) {
   let grossBuyVolumeSol = 0;
   let grossSellVolumeSol = 0;
   let feesSol = 0;
+  const creatorRewardsByMint = {};
+  let creatorRewardCount = 0;
+  let creatorRewardTotal = 0;
   let unmatchedSellProceedsSol = 0;
   let unmatchedSoldTokens = 0;
   let openPositions = 0;
@@ -86,6 +111,12 @@ export async function analyzeWallet(address, options = {}) {
   let losingPositions = 0;
 
   const dexCounts = {};
+  for (const reward of rewards) {
+    creatorRewardCount++;
+    creatorRewardTotal += reward.amount;
+    creatorRewardsByMint[reward.quoteMint] = (creatorRewardsByMint[reward.quoteMint] || 0) + reward.amount;
+  }
+
   const tradeTypeCounts = { BUY: 0, SELL: 0 };
 
   for (const trade of trades) {
@@ -128,6 +159,9 @@ export async function analyzeWallet(address, options = {}) {
     mode,
     generatedAt: new Date().toISOString(),
     tradesAnalyzed: trades.length,
+    creatorRewardCount,
+    creatorRewardTotal: round(creatorRewardTotal),
+    creatorRewardsByMint,
     buyCount: tradeTypeCounts.BUY,
     sellCount: tradeTypeCounts.SELL,
     uniqueTokens: positions.size,
