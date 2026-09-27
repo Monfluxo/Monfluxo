@@ -90,6 +90,23 @@ export async function upsertTrades(rows) {
   });
 }
 
+export async function upsertRewards(rows) {
+  if (!rows.length) return;
+  return request("wallet_rewards?on_conflict=wallet_address,signature,quote_mint,instruction_index", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(rows)
+  });
+}
+
+export async function getWalletRewardsPage(address, limit = 1000, offset = 0) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
+  const rows = await request(
+    `wallet_rewards?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+  );
+  return rows;
+}
+
 export async function upsertAnalysisCache(row) {
   return request("wallet_analysis_cache?on_conflict=wallet_address", {
     method: "POST",
