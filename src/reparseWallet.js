@@ -1,6 +1,6 @@
 import { getTransaction } from "./helius.js";
 import { parseTransaction } from "./parser.js";
-import { getWalletTradePage, upsertTrades } from "./db.js";
+import { getWalletTradePage, getTradeSamples, upsertTrades } from "./db.js";
 
 function normalizedTrade(wallet, trade) {
   return {
@@ -13,8 +13,16 @@ function normalizedTrade(wallet, trade) {
 }
 
 function argNumber(index, fallback) { const n = Number(process.argv[index]); return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback; }
-const address = process.argv[2];
-if (!address) { console.error("Uso: npm run reparse:wallet -- <WALLET> [LIMIT] [OFFSET]"); process.exit(1); }
+let address = process.argv[2];
+if (!address) {
+  const samples = await getTradeSamples(1);
+  address = samples[0]?.wallet_address || null;
+  if (!address) {
+    console.error("No hay ninguna wallet con trades en Supabase.");
+    process.exit(1);
+  }
+  console.log(`Wallet seleccionada automáticamente desde Supabase: ${address}`);
+}
 const limit = argNumber(3, 1000);
 const offset = Math.max(0, argNumber(4, 1) - 1);
 console.log(`Reparsing ${address}`);
