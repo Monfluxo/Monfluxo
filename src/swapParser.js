@@ -176,39 +176,84 @@ function getWalletTokenChanges(transaction, wallet, tokenAccountMap) {
   const postBalances = transaction?.meta?.postTokenBalances || [];
   const accountKeys = getAllAccountKeys(transaction);
 
-  for (const [account, info] of tokenAccountMap) {
-    if (info.owner !== wallet) continue;
+  // Prefer Helius' explicit owner field. This avoids missing temporary
+  // token-account movements created inside Jupiter/Pump.fun inner instructions.
+  const aggregate = (balances) => {
+    const result = new Map();
 
-    const findBalance = (balances) =>
-      balances.find(
-        (item) =>
-          item.mint === info.mint &&
-          item.accountIndex != null &&
-          getAccountKeyValue(accountKeys[item.accountIndex]) === account
-      );
+    for (const item of balances) {
+      if (item?.owner !== wallet || !item?.mint) continue;
+      const mint = item.mint;
+      const amount = BigInt(item?.uiTokenAmount?.amount || "0");
+      const previous = result.get(mint) || {
+        amount: 0n,
+        decimals: item?.uiTokenAmount?.decimals ?? 0
+      };
 
-    const pre = findBalance(preBalances);
-    const post = findBalance(postBalances);
+      result.set(mint, {
+        amount: previous.amount + amount,
+        decimals: item?.uiTokenAmount?.decimals ?? previous.decimals
+      });
+    }
 
-    const before = BigInt(pre?.uiTokenAmount?.amount || "0");
-    const after = BigInt(post?.uiTokenAmount?.amount || "0");
+    return result;
+  };
+
+  const pre = aggregate(preBalances);
+  const post = aggregate(postBalances);
+  const mints = new Set([...pre.keys(), ...post.keys()]);
+
+  for (const mint of mints) {
+    const before = pre.get(mint)?.amount || 0n;
+    const after = post.get(mint)?.amount || 0n;
     const delta = after - before;
 
     if (delta === 0n) continue;
 
-    changes.set(info.mint, {
-      mint: info.mint,
+    changes.set(mint, {
+      mint,
       rawChange: delta.toString(),
       decimals:
-        post?.uiTokenAmount?.decimals ??
-        pre?.uiTokenAmount?.decimals ??
-        getMintDecimals(transaction, info.mint, tokenAccountMap)
+        post.get(mint)?.decimals ??
+        pre.get(mint)?.decimals ??
+        getMintDecimals(transaction, mint, tokenAccountMap)
     });
+  }
+
+  // Fallback for RPC responses where token-balance owner metadata is absent.
+  if (!changes.size) {
+    for (const [account, info] of tokenAccountMap) {
+      if (info.owner !== wallet) continue;
+
+      const findBalance = (balances) =>
+        balances.find(
+          (item) =>
+            item.mint === info.mint &&
+            item.accountIndex != null &&
+            getAccountKeyValue(accountKeys[item.accountIndex]) === account
+        );
+
+      const preBalance = findBalance(preBalances);
+      const postBalance = findBalance(postBalances);
+      const before = BigInt(preBalance?.uiTokenAmount?.amount || "0");
+      const after = BigInt(postBalance?.uiTokenAmount?.amount || "0");
+      const delta = after - before;
+
+      if (delta === 0n) continue;
+
+      changes.set(info.mint, {
+        mint: info.mint,
+        rawChange: delta.toString(),
+        decimals:
+          postBalance?.uiTokenAmount?.decimals ??
+          preBalance?.uiTokenAmount?.decimals ??
+          getMintDecimals(transaction, info.mint, tokenAccountMap)
+      });
+    }
   }
 
   return changes;
 }
-
 function enrichTransferMints(transfers, tokenAccountMap) {
   return transfers.map((transfer) => ({
     ...transfer,
