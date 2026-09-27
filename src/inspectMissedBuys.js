@@ -79,5 +79,5 @@ for(const [i,x] of found.entries()){
   console.log("in: "+x.ins.map(v=>v.amount+" "+v.mint).join(" | "));
   console.log("parser: "+JSON.stringify(x.parsed));
   console.log("programs: "+(x.relevant.length?x.relevant.join(", "):"none"));
-  console.log("SOL change: "+x.solChange+" | fee: "+x.fee);
+  console.log("SOL change: "+x.solChange+" | fee: "+x.fee);\n  const keys=[...(x.tx?.transaction?.message?.accountKeys||[])].map(keyValue);\n  const wi=keys.indexOf(address);\n  const pre=wi>=0?BigInt(x.tx?.meta?.preBalances?.[wi]||0):0n;\n  const post=wi>=0?BigInt(x.tx?.meta?.postBalances?.[wi]||0):0n;\n  const gross=-(post-pre+BigInt(x.tx?.meta?.fee||0));\n  console.log("walletIndex: "+wi+" | gross SOL input: "+(Number(gross)/1e9));
 }
