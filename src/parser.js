@@ -3,6 +3,12 @@ import { parseSwapTransaction } from "./swapParser.js";
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const SOL_TRADE_EPSILON = 0.00001;
 
+const RAYDIUM_AMM_V4 = "675kPX9MHTjS2zt1qfr1NYHuZeLXfQM9H24yFSUt1Mp8";
+const JUPITER_ROUTER = "proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u";
+const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+const PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+const PUMP_AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
+
 function result(type, extra = {}) {
   return {
     type,
@@ -106,7 +112,48 @@ function getSolChange(transaction, wallet) {
   };
 }
 
+function detectDex(transaction) {
+  const programs = new Set([
+    RAYDIUM_AMM_V4,
+    JUPITER_ROUTER,
+    JUPITER_V6,
+    PUMP_FUN,
+    PUMP_AMM
+  ]);
+
+  const accountKeys = [
+    ...(transaction?.transaction?.message?.accountKeys || []),
+    ...(transaction?.meta?.loadedAddresses?.writable || []),
+    ...(transaction?.meta?.loadedAddresses?.readonly || [])
+  ];
+
+  const keyValue = (key) =>
+    typeof key === "string" ? key : key?.pubkey || key?.address || null;
+
+  const matches = (instruction) => {
+    const id =
+      instruction?.programId ||
+      instruction?.program ||
+      keyValue(accountKeys[instruction?.programIdIndex]);
+    return programs.has(id) ? id : null;
+  };
+
+  const ids = [
+    ...(transaction?.transaction?.message?.instructions || []),
+    ...(transaction?.meta?.innerInstructions || []).flatMap(
+      (group) => group.instructions || []
+    )
+  ].map(matches).filter(Boolean);
+
+  if (ids.includes(JUPITER_ROUTER) || ids.includes(JUPITER_V6)) return "jupiter";
+  if (ids.includes(RAYDIUM_AMM_V4)) return "raydium_amm_v4";
+  if (ids.includes(PUMP_AMM)) return "pump_amm";
+  if (ids.includes(PUMP_FUN)) return "pump_fun";
+  return null;
+}
+
 function buildLegacyTrade(transaction, wallet, type, tokenChange, solChange) {
+  const dex = detectDex(transaction);
   const feeSol = Number(transaction?.meta?.fee || 0) / 1e9;
   const netSol = Math.abs(solChange.solChange);
   const grossSol = netSol + feeSol;
@@ -125,7 +172,8 @@ function buildLegacyTrade(transaction, wallet, type, tokenChange, solChange) {
     estimatedPriceSol: grossSol / tokenChange.amount,
     signature: getSignature(transaction),
     blockTime: transaction?.blockTime || null,
-    parser: "legacy_balance"
+    parser: "legacy_balance",
+    dex: dex || null
   };
 }
 
