@@ -251,7 +251,7 @@ CreatorReward
 └── source
 ```
 
-For Pump creator fees, the quote asset can be SOL/WSOL or another supported quote asset. Pump documents separate creator-fee vaults for bonding curves and PumpSwap AMM pools, so the rewards layer should remain independent from the trade layer. citeturn2search0
+For Pump creator fees, the quote asset can be SOL/WSOL or another supported quote asset. Pump documents separate creator-fee vaults for bonding curves and PumpSwap AMM pools, so the rewards layer should remain independent from the trade layer.
 
 # 9. Position
 
