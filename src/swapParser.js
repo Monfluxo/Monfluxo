@@ -75,8 +75,8 @@ function buildTokenAccountMap(transaction) {
   ]) {
     if (item?.accountIndex == null || !item.mint) continue;
 
-    const key =
-      transaction?.transaction?.message?.accountKeys?.[item.accountIndex];
+    const accountKeys = getAllAccountKeys(transaction);
+    const key = accountKeys[item.accountIndex];
     const account = getAccountKeyValue(key);
 
     if (account) {
@@ -174,7 +174,7 @@ function getWalletTokenChanges(transaction, wallet, tokenAccountMap) {
   const changes = new Map();
   const preBalances = transaction?.meta?.preTokenBalances || [];
   const postBalances = transaction?.meta?.postTokenBalances || [];
-  const accountKeys = transaction?.transaction?.message?.accountKeys || [];
+  const accountKeys = getAllAccountKeys(transaction);
 
   for (const [account, info] of tokenAccountMap) {
     if (info.owner !== wallet) continue;
