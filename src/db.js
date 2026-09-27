@@ -114,6 +114,13 @@ export async function getRecentUsageCount(userId, action) {
   return rows.length;
 }
 
+export async function getTradeSamples(limit = 10) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
+  return request(
+    `wallet_trades?select=wallet_address,signature,parser,type,token_mint,block_time&order=block_time.desc&limit=${safeLimit}`
+  );
+}
+
 export async function getWalletTradePage(address, limit = 1000, offset = 0) {
   const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
   const rows = await request(
