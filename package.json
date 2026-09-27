@@ -7,6 +7,7 @@
     "start": "node --env-file=.env src/index.js",
     "analyze:wallet": "node --env-file=.env src/walletAnalyzer.js",
     "reparse:wallet": "node --env-file=.env src/reparseWallet.js",
-    "repair:wallet": "node --env-file=.env src/repairWallet.js"
+    "repair:wallet": "node --env-file=.env src/repairWallet.js",
+    "debug:unmatched": "node --env-file=.env src/debugUnmatched.js"
   }
 }
