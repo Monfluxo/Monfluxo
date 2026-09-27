@@ -39,9 +39,13 @@ function getSignature(transaction) {
 
 function isTokenAccountInitialization(instruction) {
   const parsed = instruction?.parsed;
+  const program = instruction?.program || instruction?.programId;
 
   return (
-    instruction?.program === "spl-token" &&
+    (program === "spl-token" ||
+      program === "spl-token-2022" ||
+      program === TOKEN_2022_PROGRAM ||
+      program === SPL_TOKEN_PROGRAM) &&
     [
       "initializeAccount",
       "initializeAccount2",
@@ -124,29 +128,42 @@ function getMintDecimals(transaction, mint, tokenAccountMap) {
 function getSplTransfers(transaction) {
   const transfers = [];
 
-  for (const group of transaction?.meta?.innerInstructions || []) {
-    for (const instruction of group.instructions || []) {
-      const parsed = instruction?.parsed;
-      const info = parsed?.info;
+  const allInstructions = [
+    ...(transaction?.transaction?.message?.instructions || []).map((instruction) => ({
+      instruction,
+      parentIndex: null
+    })),
+    ...(transaction?.meta?.innerInstructions || []).flatMap((group) =>
+      (group.instructions || []).map((instruction) => ({
+        instruction,
+        parentIndex: group.index
+      }))
+    )
+  ];
 
-      if (
-        (instruction?.programId === SPL_TOKEN_PROGRAM ||
-      instruction?.programId === TOKEN_2022_PROGRAM ||
-          instruction?.program === "spl-token") &&
-        (parsed?.type === "transfer" ||
-          parsed?.type === "transferChecked") &&
-        info?.source &&
-        info?.destination &&
-        (info?.amount != null || info?.tokenAmount?.amount != null)
-      ) {
-        transfers.push({
-          source: info.source,
-          destination: info.destination,
-          rawAmount: String(info.amount ?? info.tokenAmount.amount),
-          mint: null,
-          parentIndex: group.index
-        });
-      }
+  for (const { instruction, parentIndex } of allInstructions) {
+    const parsed = instruction?.parsed;
+    const info = parsed?.info;
+    const program = instruction?.program || instruction?.programId;
+
+    if (
+      (program === "spl-token" ||
+        program === "spl-token-2022" ||
+        program === SPL_TOKEN_PROGRAM ||
+        program === TOKEN_2022_PROGRAM) &&
+      (parsed?.type === "transfer" ||
+        parsed?.type === "transferChecked") &&
+      info?.source &&
+      info?.destination &&
+      (info?.amount != null || info?.tokenAmount?.amount != null)
+    ) {
+      transfers.push({
+        source: info.source,
+        destination: info.destination,
+        rawAmount: String(info.amount ?? info.tokenAmount.amount),
+        mint: info.mint || info.tokenAmount?.mint || null,
+        parentIndex
+      });
     }
   }
 
