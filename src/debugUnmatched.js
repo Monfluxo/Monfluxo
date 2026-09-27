@@ -12,7 +12,6 @@ if (!address) {
     console.error("No hay ninguna wallet con trades en Supabase.");
     process.exit(1);
   }
-  console.log(`Wallet seleccionada automáticamente desde Supabase: ${address}`);
 }
 
 const rows = [];
@@ -23,11 +22,7 @@ for (let offset = 0; offset < 500000; offset += pageSize) {
   if (page.length < pageSize) break;
 }
 
-rows.sort((a, b) => {
-  const ta = a.block_time ? new Date(a.block_time).getTime() : 0;
-  const tb = b.block_time ? new Date(b.block_time).getTime() : 0;
-  return ta - tb;
-});
+rows.sort((a, b) => new Date(a.block_time || 0) - new Date(b.block_time || 0));
 
 const inventory = new Map();
 const unmatched = [];
@@ -41,86 +36,65 @@ for (const row of rows) {
 
   if (row.type === "BUY") {
     inventory.set(mint, available + amount);
-    continue;
-  }
-
-  if (row.type === "SELL") {
+  } else if (row.type === "SELL") {
     const matched = Math.min(available, amount);
     const missing = amount - matched;
-
     inventory.set(mint, Math.max(0, available - amount));
-
-    if (missing > 0) {
-      unmatched.push({
-        row,
-        missing,
-        availableBeforeSell: available
-      });
-    }
+    if (missing > 0) unmatched.push({ row, missing });
   }
 }
 
 const byMint = new Map();
 for (const item of unmatched) {
-  const mint = item.row.token_mint;
-  if (!byMint.has(mint)) byMint.set(mint, []);
-  byMint.get(mint).push(item);
+  if (!byMint.has(item.row.token_mint)) byMint.set(item.row.token_mint, []);
+  byMint.get(item.row.token_mint).push(item);
 }
-
-console.log(`Trades analizados: ${rows.length}`);
-console.log(`SELLs con inventario insuficiente: ${unmatched.length}`);
-console.log(`Tokens afectados: ${byMint.size}`);
-console.log("");
 
 const affected = [...byMint.entries()]
   .map(([mint, items]) => ({
     mint,
-    missing: items.reduce((sum, item) => sum + item.missing, 0),
-    proceeds: items.reduce((sum, item) => {
-      const amount = Number(item.row.token_amount);
-      const sol = Number(item.row.sol_amount);
-      return sum + (amount > 0 ? sol * (item.missing / amount) : 0);
-    }, 0),
-    sells: items.length
+    items,
+    missing: items.reduce((s, x) => s + x.missing, 0),
+    proceeds: items.reduce((s, x) => {
+      const amount = Number(x.row.token_amount);
+      return s + (amount > 0 ? Number(x.row.sol_amount) * x.missing / amount : 0);
+    }, 0)
   }))
-  .sort((a, b) => b.proceeds - a.proceeds);
+  .sort((a, b) => b.proceeds - a.proceeds)
+  .slice(0, 10);
 
-for (const item of affected.slice(0, 20)) {
-  console.log("========================================");
-  console.log(`MINT: ${item.mint}`);
-  console.log(`missingTokens: ${item.missing}`);
-  console.log(`estimatedUnmatchedProceedsSol: ${item.proceeds}`);
-  console.log(`unmatchedSELLs: ${item.sells}`);
+console.log(`Trades: ${rows.length} | Tokens afectados: ${byMint.size}`);
 
-  const tokenRows = rows
-    .filter((row) => row.token_mint === item.mint)
-    .slice(-20);
+for (const item of affected) {
+  const first = item.items[0].row;
+  const tx = await getTransaction(first.signature);
+  const swap = parseSwapTransaction(tx, address);
 
-  console.log("Últimas operaciones registradas:");
-  for (const row of tokenRows) {
-    console.log(
-      `${row.block_time || "NO_TIME"} | ${row.type} | tokens=${row.token_amount} | SOL=${row.sol_amount} | dex=${row.dex || "NULL"} | parser=${row.parser} | sig=${row.signature}`
-    );
+  const previous = rows
+    .filter((r) =>
+      r.token_mint === item.mint &&
+      new Date(r.block_time || 0) < new Date(first.block_time || 0)
+    )
+    .slice(-1)[0];
+
+  let previousParse = null;
+  if (previous) {
+    const previousTx = await getTransaction(previous.signature);
+    const previousSwap = parseSwapTransaction(previousTx, address);
+    previousParse = previousSwap
+      ? `${previousSwap.type}/${previousSwap.dex}`
+      : "NULL";
   }
 
-  for (const unmatchedItem of byMint.get(item.mint).slice(0, 3)) {
-    const row = unmatchedItem.row;
-    try {
-      const tx = await getTransaction(row.signature);
-      const swap = parseSwapTransaction(tx, address);
-      console.log("");
-      console.log(`SELL sin BUY suficiente: ${row.signature}`);
-      console.log(
-        `stored=${row.type} | ${row.token_mint} | dex=${row.dex || "NULL"} | missing=${unmatchedItem.missing}`
-      );
-      console.log(
-        `reparse=${swap ? `${swap.type} | ${swap.inputMint} -> ${swap.outputMint} | dex=${swap.dex}` : "NULL"}`
-      );
-    } catch (error) {
-      console.log(`ERROR fetching ${row.signature}: ${error.message}`);
-    }
-  }
+  console.log(
+    `\n${item.mint} | missing=${item.missing} | unmatchedSOL=${item.proceeds.toFixed(4)}`
+  );
+  console.log(
+    `first unmatched SELL: ${first.signature} | stored=${first.dex || "NULL"} | reparse=${swap ? swap.type + "/" + swap.dex : "NULL"}`
+  );
+  console.log(
+    `previous recorded trade: ${previous ? previous.type + "/" + (previous.dex || "NULL") : "NONE"} | reparse=${previousParse || "NONE"}`
+  );
 }
 
-console.log("");
-console.log("DIAGNOSTICO TERMINADO — no se modifica la DB.");
+console.log("\nDiagnóstico terminado — no modifica la DB.");
