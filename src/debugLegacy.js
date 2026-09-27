@@ -1,14 +1,19 @@
 import { getTransaction } from "./helius.js";
 import { parseTransaction } from "./parser.js";
-import { getWalletTradePage } from "./db.js";
+import { getWalletTradePage, getTradeSamples } from "./db.js";
 
 const address = process.argv[2];
 const limit = Number(process.argv[3] || 396);
 const samples = Number(process.argv[4] || 12);
 
 if (!address) {
-  console.error("Uso: node --env-file=.env src/debugLegacy.js <WALLET> [LIMIT] [SAMPLES]");
-  process.exit(1);
+  const samples = await getTradeSamples(10);
+  console.log("No se indicó wallet.");
+  console.log(`Trades visibles en Supabase: ${samples.length}`);
+  for (const row of samples) {
+    console.log(`${row.wallet_address} | ${row.type} | ${row.parser} | ${row.signature}`);
+  }
+  process.exit(0);
 }
 
 const rows = await getWalletTradePage(address, limit, 0);
