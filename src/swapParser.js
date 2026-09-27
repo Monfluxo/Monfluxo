@@ -17,7 +17,7 @@ function resolveProgramId(instruction, accountKeys) {
   );
 }
 
-function parseCreatorFeeClaims(transaction, wallet) {
+export function parseCreatorFeeClaims(transaction, wallet) {
   const accountKeys = getAllAccountKeys(transaction);
   const claims = [];
   const outerInstructions = transaction?.transaction?.message?.instructions || [];
