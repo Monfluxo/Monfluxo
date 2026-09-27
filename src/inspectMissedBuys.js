@@ -1,5 +1,5 @@
 import { getTransactionsForAddress, getTransaction } from "./helius.js";
-import { parseSwapTransaction } from "./swapParser.js";
+import { parseTransaction } from "./parser.js";
 import { getTradeSamples } from "./db.js";
 
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
@@ -53,7 +53,7 @@ while(pages<Number(process.env.MAX_DEEP_PAGES||500)&&found.length<TARGET_COUNT){
   pages++;
   const r=await getTransactionsForAddress(address,token);
   for(const tx of r?.data||[]){
-    const ins=inflows(tx), parsed=parseSwapTransaction(tx,address);
+    const ins=inflows(tx), parsed=parseTransaction(tx,address);
     if(!ins.length||parsed?.type==="BUY"||parsed?.type==="CREATOR_FEE_CLAIM") continue;
     const p=programs(tx);
     const relevant=p.filter(x=>wanted.has(x));
