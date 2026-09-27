@@ -672,6 +672,60 @@ const outputDecimals = getMintDecimals(
     }
   }
   
+  // Pump.fun and some routed swaps can move native SOL only through
+  // balance changes, without exposing a parsed System Program transfer.
+  // Mirror the SELL balance fallback for the BUY direction.
+  let fallbackSolInput = null;
+
+  if (
+    fallbackTokenIn.length === 1 &&
+    walletIndex >= 0 &&
+    transaction?.meta?.preBalances?.[walletIndex] != null &&
+    transaction?.meta?.postBalances?.[walletIndex] != null
+  ) {
+    const preLamports = BigInt(transaction.meta.preBalances[walletIndex]);
+    const postLamports = BigInt(transaction.meta.postBalances[walletIndex]);
+    const feeLamports = BigInt(transaction.meta?.fee || 0);
+
+    const netChange = postLamports - preLamports;
+    const grossInput = -(netChange + feeLamports);
+
+    if (grossInput > 0n) {
+      fallbackSolInput = grossInput;
+    }
+  }
+
+  if (fallbackTokenIn.length === 1 && fallbackSolInput) {
+    const change = fallbackTokenIn[0];
+    const outputMint = change.mint;
+    const outputRaw = BigInt(change.rawChange);
+
+    const outputDecimals = getMintDecimals(
+      transaction,
+      outputMint,
+      tokenAccountMap
+    );
+
+    const inputAmount = Number(fallbackSolInput) / 1e9;
+    const outputAmount = toAmount(outputRaw.toString(), outputDecimals);
+
+    if (inputAmount > 0 && outputAmount > 0) {
+      return {
+        wallet,
+        type: "BUY",
+        dex: detectedDex,
+        inputMint: WSOL_MINT,
+        inputAmount,
+        outputMint,
+        outputAmount,
+        estimatedPriceSol: inputAmount / outputAmount,
+        feeSol: Number(transaction.meta?.fee || 0) / 1e9,
+        signature: getSignature(transaction),
+        blockTime: transaction.blockTime ?? null
+      };
+    }
+  }
+
   if (fallbackTokenOut.length === 1 && fallbackSolOutput) {
     const change = fallbackTokenOut[0];
   
