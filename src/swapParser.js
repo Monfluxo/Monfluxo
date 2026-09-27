@@ -651,6 +651,8 @@ if (fallbackTokenOut.length === 1 && fallbackSolOutput) {
   }
 }
 
+const [outputMint, outputRaw] = effectiveOutput;
+
 const outputDecimals = getMintDecimals(
       transaction,
       outputMint,
