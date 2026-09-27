@@ -54,7 +54,7 @@ while(pages<Number(process.env.MAX_DEEP_PAGES||500)&&found.length<TARGET_COUNT){
   const r=await getTransactionsForAddress(address,token);
   for(const tx of r?.data||[]){
     const ins=inflows(tx), parsed=parseSwapTransaction(tx,address);
-    if(!ins.length||parsed?.type==="BUY") continue;
+    if(!ins.length||parsed?.type==="BUY"||parsed?.type==="CREATOR_FEE_CLAIM") continue;
     const p=programs(tx);
     const relevant=p.filter(x=>wanted.has(x));
     const keys=[...(tx?.transaction?.message?.accountKeys||[])].map(keyValue);
