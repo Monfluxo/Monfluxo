@@ -133,6 +133,26 @@ for(const [i,x] of found.entries()){
   for (const group of x.tx?.meta?.innerInstructions || [])
     for (const ix of group.instructions || []) addSpl(ix);
 
+  console.log("instruction flow:");
+  const summarizeIx = (ix, where) => {
+    const parsed = ix?.parsed;
+    const info = parsed?.info;
+    const program = ix?.program || ix?.programId || "?";
+    if (parsed) {
+      console.log("  "+where+" | "+program+" | "+(parsed.type || "?")+" | "+JSON.stringify(info || {}));
+    } else if (ix?.programId || ix?.program) {
+      console.log("  "+where+" | "+program+" | raw");
+    }
+  };
+  for (const [j, ix] of (x.tx?.transaction?.message?.instructions || []).entries()) {
+    summarizeIx(ix, "outer["+j+"]");
+  }
+  for (const group of x.tx?.meta?.innerInstructions || []) {
+    for (const [j, ix] of (group.instructions || []).entries()) {
+      summarizeIx(ix, "inner["+group.index+":"+j+"]");
+    }
+  }
+
   console.log("SPL transfers involving wallet:");
   for (const t of splTransfers) {
     if (t.source === address || t.destination === address) {
