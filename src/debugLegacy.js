@@ -2,18 +2,22 @@ import { getTransaction } from "./helius.js";
 import { parseTransaction } from "./parser.js";
 import { getWalletTradePage, getTradeSamples } from "./db.js";
 
-const address = process.argv[2];
+let address = process.argv[2];
 const limit = Number(process.argv[3] || 396);
 const samples = Number(process.argv[4] || 12);
 
 if (!address) {
   const samples = await getTradeSamples(10);
-  console.log("No se indicó wallet.");
   console.log(`Trades visibles en Supabase: ${samples.length}`);
   for (const row of samples) {
     console.log(`${row.wallet_address} | ${row.type} | ${row.parser} | ${row.signature}`);
   }
-  process.exit(0);
+  address = samples[0]?.wallet_address || null;
+  if (!address) {
+    console.log("No hay trades visibles en Supabase.");
+    process.exit(0);
+  }
+  console.log(`\nUsando automáticamente la wallet del primer registro: ${address}`);
 }
 
 const rows = await getWalletTradePage(address, limit, 0);
