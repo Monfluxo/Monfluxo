@@ -101,13 +101,6 @@ for (const row of legacyRows.slice(0, samples)) {
     const programs = programIds(tx);
     const tokens = tokenSummary(tx, address);
 
-    const keys = [
-      ...(tx?.transaction?.message?.accountKeys || []),
-      ...(tx?.meta?.loadedAddresses?.writable || []),
-      ...(tx?.meta?.loadedAddresses?.readonly || [])
-    ];
-
-    const walletIndex = keys.findIndex((k) => keyValue(k) === address);
     const preSol = walletIndex >= 0 ? tx?.meta?.preBalances?.[walletIndex] : null;
     const postSol = walletIndex >= 0 ? tx?.meta?.postBalances?.[walletIndex] : null;
     const solDelta = preSol != null && postSol != null ? Number(postSol - preSol) / 1e9 : null;
