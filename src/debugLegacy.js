@@ -5,7 +5,7 @@ import { getWalletTradePage, getTradeSamples } from "./db.js";
 
 let address = process.argv[2];
 const limit = Number(process.argv[3] || 396);
-const samples = Number(process.argv[4] || 12);
+const samples = Number(process.argv[4] || 1000);
 
 if (!address) {
   const samples = await getTradeSamples(10);
