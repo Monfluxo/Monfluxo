@@ -594,77 +594,7 @@ export function parseSwapTransaction(transaction, wallet) {
             BigInt(fallbackTokenIn[0].rawChange)
           ];
 
-    const fallbackTokenOut = walletNonWsolChanges.filter(
-  (change) => BigInt(change.rawChange) < 0n
-);
-
-// Jupiter/Orca may route the SOL through a temporary WSOL account.
-// In that case there may be no directly detectable WSOL/native-SOL
-// transfer involving the wallet. Use the wallet's native balance delta.
-const accountKeys = getAllAccountKeys(transaction);
-const walletIndex = accountKeys.findIndex(
-  (key) => getAccountKeyValue(key) === wallet
-);
-
-let fallbackSolOutput = null;
-
-if (
-  fallbackTokenOut.length === 1 &&
-  walletIndex >= 0 &&
-  transaction?.meta?.preBalances?.[walletIndex] != null &&
-  transaction?.meta?.postBalances?.[walletIndex] != null
-) {
-  const preLamports = BigInt(transaction.meta.preBalances[walletIndex]);
-  const postLamports = BigInt(transaction.meta.postBalances[walletIndex]);
-  const feeLamports = BigInt(transaction.meta?.fee || 0);
-
-  const netChange = postLamports - preLamports;
-
-  // Restore the transaction fee because the balance delta is net of fee.
-  const grossOutput = netChange + feeLamports;
-
-  if (grossOutput > 0n) {
-    fallbackSolOutput = grossOutput;
-  }
-}
-
-if (fallbackTokenOut.length === 1 && fallbackSolOutput) {
-  const change = fallbackTokenOut[0];
-
-  const inputMint = change.mint;
-  const inputRaw = -BigInt(change.rawChange);
-
-  const inputDecimals = getMintDecimals(
-    transaction,
-    inputMint,
-    tokenAccountMap
-  );
-
-  const inputAmount = toAmount(
-    inputRaw.toString(),
-    inputDecimals
-  );
-
-  const outputAmount = Number(fallbackSolOutput) / 1e9;
-
-  if (inputAmount > 0 && outputAmount > 0) {
-    return {
-      wallet,
-      type: "SELL",
-      dex: detectedDex,
-      inputMint,
-      inputAmount,
-      outputMint: WSOL_MINT,
-      outputAmount,
-      estimatedPriceSol: outputAmount / inputAmount,
-      feeSol: Number(transaction.meta?.fee || 0) / 1e9,
-      signature: getSignature(transaction),
-      blockTime: transaction.blockTime ?? null
-    };
-  }
-}
-
-const [outputMint, outputRaw] = effectiveOutput;
+    const [outputMint, outputRaw] = effectiveOutput;
 
 const outputDecimals = getMintDecimals(
       transaction,
@@ -705,6 +635,80 @@ const outputDecimals = getMintDecimals(
     }
   }
 
+
+  // SELL fallback for swaps that return native SOL while the token leg
+  // is only visible through the wallet balance delta.
+  const fallbackTokenOut = walletNonWsolChanges.filter(
+    (change) => BigInt(change.rawChange) < 0n
+  );
+  
+  // Jupiter/Orca may route the SOL through a temporary WSOL account.
+  // In that case there may be no directly detectable WSOL/native-SOL
+  // transfer involving the wallet. Use the wallet's native balance delta.
+  const accountKeys = getAllAccountKeys(transaction);
+  const walletIndex = accountKeys.findIndex(
+    (key) => getAccountKeyValue(key) === wallet
+  );
+  
+  let fallbackSolOutput = null;
+  
+  if (
+    fallbackTokenOut.length === 1 &&
+    walletIndex >= 0 &&
+    transaction?.meta?.preBalances?.[walletIndex] != null &&
+    transaction?.meta?.postBalances?.[walletIndex] != null
+  ) {
+    const preLamports = BigInt(transaction.meta.preBalances[walletIndex]);
+    const postLamports = BigInt(transaction.meta.postBalances[walletIndex]);
+    const feeLamports = BigInt(transaction.meta?.fee || 0);
+  
+    const netChange = postLamports - preLamports;
+  
+    // Restore the transaction fee because the balance delta is net of fee.
+    const grossOutput = netChange + feeLamports;
+  
+    if (grossOutput > 0n) {
+      fallbackSolOutput = grossOutput;
+    }
+  }
+  
+  if (fallbackTokenOut.length === 1 && fallbackSolOutput) {
+    const change = fallbackTokenOut[0];
+  
+    const inputMint = change.mint;
+    const inputRaw = -BigInt(change.rawChange);
+  
+    const inputDecimals = getMintDecimals(
+      transaction,
+      inputMint,
+      tokenAccountMap
+    );
+  
+    const inputAmount = toAmount(
+      inputRaw.toString(),
+      inputDecimals
+    );
+  
+    const outputAmount = Number(fallbackSolOutput) / 1e9;
+  
+    if (inputAmount > 0 && outputAmount > 0) {
+      return {
+        wallet,
+        type: "SELL",
+        dex: detectedDex,
+        inputMint,
+        inputAmount,
+        outputMint: WSOL_MINT,
+        outputAmount,
+        estimatedPriceSol: outputAmount / inputAmount,
+        feeSol: Number(transaction.meta?.fee || 0) / 1e9,
+        signature: getSignature(transaction),
+        blockTime: transaction.blockTime ?? null
+      };
+    }
+  }
+  
+  
   if (wsolOutput && nonWsolInputs.length === 1) {
     const [inputMint, inputRaw] = nonWsolInputs[0];
 
