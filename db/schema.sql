@@ -38,6 +38,7 @@ create table if not exists wallet_trades (
   wallet_address text not null references wallets(address) on delete cascade,
   signature text not null,
   event_index integer not null default 0,
+  instruction_index integer,
   block_time timestamptz,
   type text not null check (type in ('BUY','SELL')),
   token_mint text not null,
@@ -58,9 +59,9 @@ create table if not exists wallet_transfers (
   event_index integer not null default 0,
   instruction_index integer,
   block_time timestamptz,
-  mint text not null,
   direction text not null check (direction in ('IN','OUT')),
-  amount numeric not null,
+  token_mint text not null,
+  token_amount numeric not null,
   raw_amount numeric not null,
   decimals integer not null default 0,
   source_address text,
@@ -113,7 +114,7 @@ create index if not exists idx_wallet_transactions_block_time on wallet_transact
 create index if not exists idx_wallet_trades_wallet_time on wallet_trades(wallet_address, block_time desc);
 create index if not exists idx_wallet_trades_token on wallet_trades(token_mint, block_time desc);
 create index if not exists idx_wallet_transfers_wallet_time on wallet_transfers(wallet_address, block_time desc);
-create index if not exists idx_wallet_transfers_mint_time on wallet_transfers(mint, block_time desc);
+create index if not exists idx_wallet_transfers_mint_time on wallet_transfers(token_mint, block_time desc);
 create index if not exists idx_wallet_rewards_wallet_time on wallet_rewards(wallet_address, block_time desc);
 create index if not exists idx_wallet_rewards_quote on wallet_rewards(quote_mint, block_time desc);
 create index if not exists idx_usage_events_user_time on usage_events(user_id, created_at desc);
@@ -121,5 +122,6 @@ create index if not exists idx_usage_events_user_time on usage_events(user_id, c
 -- Safe upgrades for existing projects.
 alter table wallet_sync_state add column if not exists history_complete boolean not null default false;
 alter table wallet_trades add column if not exists event_index integer not null default 0;
+alter table wallet_trades add column if not exists instruction_index integer;
 alter table wallet_trades drop constraint if exists wallet_trades_wallet_address_signature_key;
 create unique index if not exists idx_wallet_trades_event_unique on wallet_trades(wallet_address, signature, event_index);
