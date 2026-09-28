@@ -10,6 +10,7 @@ import { analyzeWallet } from "./walletAnalyzer.js";
 const DEFAULT_BENCHMARK = "CjfLyafnK76qJyfTnBF8wb2H15D3bnMVNbRESmByDtmX";
 const UNMATCHED_SOL_WARN = Number(process.env.REGRESSION_UNMATCHED_SOL_WARN || 0.001);
 const MAX_DEEP_PAGES = Number(process.env.MAX_DEEP_PAGES || 500);
+const RESET_HISTORY = process.env.REGRESSION_RESET_HISTORY === "true";
 
 function walletList() {
   const cli = process.argv.slice(2).filter(Boolean);
@@ -28,13 +29,16 @@ function round(value, decimals = 6) {
 }
 
 function coverage(sync) {
-  const mainHistoryCapped = Number(sync?.pages || 0) >= MAX_DEEP_PAGES;
+  const mainHistoryComplete = sync?.historyComplete === true;
   return {
-    mainHistoryComplete: !mainHistoryCapped,
-    mainHistoryCapped,
+    mainHistoryComplete,
+    backfillPending: !mainHistoryComplete && sync?.backfillCursorSaved === true,
     maxDeepPages: MAX_DEEP_PAGES,
-    pagesScanned: Number(sync?.pages || 0),
-    transactionsScanned: Number(sync?.transactionsStored || 0)
+    pagesScannedThisBatch: Number(sync?.pages || 0),
+    transactionsScannedThisBatch: Number(sync?.transactionsStored || 0),
+    resumingBackfill: sync?.resumingBackfill === true,
+    unifiedTokenHistory: sync?.unifiedTokenHistory === true,
+    tokenAccountsFilter: sync?.tokenAccountsFilter || null
   };
 }
 
@@ -55,9 +59,9 @@ function evaluate(metrics, sync) {
   if (Number(metrics.creatorRewardCount || 0) < 0) errors.push("negative creatorRewardCount");
   if (Number(metrics.creatorRewardTokenAmount || 0) < 0) errors.push("negative creatorRewardTokenAmount");
 
-  if (scanCoverage.mainHistoryCapped) {
+  if (!scanCoverage.mainHistoryComplete) {
     info.push(
-      `history truncated at ${MAX_DEEP_PAGES} pages / ${scanCoverage.transactionsScanned} transactions; unmatched accounting is non-diagnostic until older history is indexed`
+      `historical backfill remains incomplete after this batch; unmatched accounting is non-diagnostic until historyComplete=true`
     );
   } else {
     if (unmatchedSol > UNMATCHED_SOL_WARN) {
@@ -74,7 +78,7 @@ function evaluate(metrics, sync) {
 
   const verdict = errors.length
     ? "ERROR"
-    : scanCoverage.mainHistoryCapped
+    : !scanCoverage.mainHistoryComplete
       ? "INCOMPLETE"
       : warnings.length
         ? "REVIEW"
@@ -97,17 +101,33 @@ async function forceDeepRegression(address) {
     updated_at: new Date().toISOString()
   });
 
-  await upsertSyncState({
-    wallet_address: address,
-    status: "idle",
-    newest_signature: null,
-    newest_block_time: null,
-    oldest_signature: null,
-    oldest_block_time: null,
-    pages_scanned: 0,
-    history_complete: false,
-    updated_at: new Date().toISOString()
-  });
+  const canResume =
+    !RESET_HISTORY &&
+    previous?.history_complete !== true &&
+    Boolean(previous?.backfill_pagination_token);
+
+  if (!canResume) {
+    await upsertSyncState({
+      wallet_address: address,
+      status: "idle",
+      newest_signature: null,
+      newest_block_time: null,
+      oldest_signature: null,
+      oldest_block_time: null,
+      pages_scanned: 0,
+      history_complete: false,
+      backfill_pagination_token: null,
+      backfill_started_at: null,
+      backfill_updated_at: null,
+      updated_at: new Date().toISOString()
+    });
+  } else {
+    await upsertSyncState({
+      wallet_address: address,
+      status: "idle",
+      updated_at: new Date().toISOString()
+    });
+  }
 
   try {
     const sync = await syncWalletHistory(address, {
@@ -132,6 +152,11 @@ async function forceDeepRegression(address) {
         tradesStored: sync.tradesStored,
         transfersStored: sync.transfersStored,
         rewardsStored: sync.rewardsStored,
+        historyComplete: sync.historyComplete,
+        backfillCursorSaved: sync.backfillCursorSaved,
+        resumingBackfill: sync.resumingBackfill,
+        unifiedTokenHistory: sync.unifiedTokenHistory,
+        tokenAccountsFilter: sync.tokenAccountsFilter,
         tokenAccountEnrichment: sync.tokenAccountEnrichment || null
       },
       accounting: {
@@ -172,7 +197,8 @@ await assertEventModelV2Schema();
 const wallets = walletList();
 console.log(`MONFLUXO REGRESSION: ${wallets.length} wallet(s)`);
 console.log(`Unmatched proceeds warning threshold: ${UNMATCHED_SOL_WARN} SOL`);
-console.log(`Deep history cap: ${MAX_DEEP_PAGES} pages`);
+console.log(`Deep batch cap: ${MAX_DEEP_PAGES} pages`);
+console.log(`Reset historical cursor: ${RESET_HISTORY}`);
 
 const results = [];
 for (let index = 0; index < wallets.length; index++) {
