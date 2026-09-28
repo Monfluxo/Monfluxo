@@ -41,6 +41,9 @@ await upsertSyncState({
   oldest_block_time: null,
   pages_scanned: 0,
   history_complete: false,
+  backfill_pagination_token: null,
+  backfill_started_at: null,
+  backfill_updated_at: null,
   updated_at: new Date().toISOString()
 });
 
