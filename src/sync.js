@@ -1,6 +1,7 @@
 import { getTransactionsForAddress } from "./helius.js";
 import { parseTransaction } from "./parser.js";
 import {
+  assertEventModelV2Schema,
   upsertWallet,
   getSyncState,
   upsertSyncState,
@@ -104,6 +105,10 @@ export async function syncWalletHistory(address, options = {}) {
       : Number(process.env.MAX_DEEP_PAGES || 500),
     storeRaw = process.env.STORE_RAW_TRANSACTIONS !== "false"
   } = options;
+
+  // Fail before touching sync state or derived data when Supabase has not yet
+  // received the Event Model v2 migration.
+  await assertEventModelV2Schema();
 
   const previous = await getSyncState(address);
 
