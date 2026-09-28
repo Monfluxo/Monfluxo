@@ -8,6 +8,10 @@ const HELIUS_RPC_URL =
   `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
 const MAX_RETRIES = Number(process.env.HELIUS_MAX_RETRIES || 5);
+const FULL_PAGE_LIMIT = Math.min(
+  Math.max(Number(process.env.HELIUS_FULL_PAGE_LIMIT || 100), 1),
+  100
+);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -69,20 +73,27 @@ export async function getTransactionsForAddress(
     process.env.HELIUS_TOKEN_ACCOUNTS_FILTER ??
     "balanceChanged";
 
-  const options = {
-    transactionDetails: "full",
-    limit: 100,
-    sortOrder: requestOptions.sortOrder || "desc"
+  const filters = {
+    ...(requestOptions.filters || {})
   };
 
-  if (tokenAccounts && tokenAccounts !== "none") {
-    options.filters = {
-      ...(requestOptions.filters || {}),
-      tokenAccounts
-    };
-  } else if (requestOptions.filters) {
-    options.filters = requestOptions.filters;
+  if (requestOptions.succeededOnly !== false) {
+    filters.status = "succeeded";
   }
+
+  if (tokenAccounts && tokenAccounts !== "none") {
+    filters.tokenAccounts = tokenAccounts;
+  }
+
+  const options = {
+    transactionDetails: "full",
+    limit: Math.min(
+      Math.max(Number(requestOptions.limit || FULL_PAGE_LIMIT), 1),
+      100
+    ),
+    sortOrder: requestOptions.sortOrder || "desc",
+    ...(Object.keys(filters).length ? { filters } : {})
+  };
 
   if (paginationToken) {
     options.paginationToken = paginationToken;
@@ -92,6 +103,33 @@ export async function getTransactionsForAddress(
     "getTransactionsForAddress",
     [address, options],
     "monfluxo-history"
+  );
+}
+
+export async function getTransfersByAddress(
+  address,
+  paginationToken = null,
+  requestOptions = {}
+) {
+  const options = {
+    limit: Math.min(
+      Math.max(Number(requestOptions.limit || 100), 1),
+      100
+    ),
+    ...(requestOptions.direction ? { direction: requestOptions.direction } : {}),
+    ...(requestOptions.mint ? { mint: requestOptions.mint } : {}),
+    ...(requestOptions.with ? { with: requestOptions.with } : {}),
+    ...(requestOptions.filters ? { filters: requestOptions.filters } : {})
+  };
+
+  if (paginationToken) {
+    options.paginationToken = paginationToken;
+  }
+
+  return heliusRequest(
+    "getTransfersByAddress",
+    [address, options],
+    "monfluxo-transfers"
   );
 }
 
