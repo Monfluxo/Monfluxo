@@ -14,9 +14,7 @@ function mapTrade(row) {
     signature: row.signature,
     eventIndex: Number(row.event_index || 0),
     instructionIndex: row.instruction_index == null ? null : Number(row.instruction_index),
-    blockTime: row.block_time
-      ? Math.floor(new Date(row.block_time).getTime() / 1000)
-      : null,
+    blockTime: row.block_time ? Math.floor(new Date(row.block_time).getTime() / 1000) : null,
     type: row.type,
     tokenMint: row.token_mint,
     tokenAmount: Number(row.token_amount),
@@ -34,9 +32,7 @@ function mapTransfer(row) {
     signature: row.signature,
     eventIndex: Number(row.event_index || 0),
     instructionIndex: row.instruction_index == null ? null : Number(row.instruction_index),
-    blockTime: row.block_time
-      ? Math.floor(new Date(row.block_time).getTime() / 1000)
-      : null,
+    blockTime: row.block_time ? Math.floor(new Date(row.block_time).getTime() / 1000) : null,
     direction: row.direction,
     mint: row.token_mint,
     amount: Number(row.token_amount),
@@ -76,10 +72,13 @@ function summarizePosition(position) {
     sells: position.sells,
     transferIns: position.transferIns,
     transferOuts: position.transferOuts,
+    rewardIns: position.rewardIns,
+    rewardCount: position.rewardCount,
     tokensBought: position.tokensBought,
     tokensSold: position.tokensSold,
     tokensTransferredIn: position.tokensTransferredIn,
     tokensTransferredOut: position.tokensTransferredOut,
+    tokensRewarded: position.tokensRewarded,
     tokensRemaining: position.tokensRemaining,
     knownCostRemainingTokens: position.knownCostRemainingTokens,
     unknownCostRemainingTokens: position.unknownCostRemainingTokens,
@@ -104,7 +103,6 @@ function summarizePosition(position) {
 export async function analyzeWallet(address, options = {}) {
   const mode = options.mode || "quick";
   const sync = await syncWalletHistory(address, { mode });
-
   const pageSize = 1000;
   const maxRows = mode === "quick"
     ? Number(process.env.MAX_QUICK_TRADE_ROWS || 5000)
@@ -135,15 +133,11 @@ export async function analyzeWallet(address, options = {}) {
     if (rows.length < pageSize) break;
   }
 
-  trades.sort((a, b) =>
-    (a.blockTime ?? 0) - (b.blockTime ?? 0) || a.eventIndex - b.eventIndex
-  );
-  transfers.sort((a, b) =>
-    (a.blockTime ?? 0) - (b.blockTime ?? 0) || a.eventIndex - b.eventIndex
-  );
-  rewards.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0));
+  trades.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0) || a.eventIndex - b.eventIndex);
+  transfers.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0) || a.eventIndex - b.eventIndex);
+  rewards.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0) || a.instructionIndex - b.instructionIndex);
 
-  const positions = buildPositions(trades, transfers);
+  const positions = buildPositions(trades, transfers, rewards);
   const positionList = [...positions.values()];
 
   let realizedPnl = 0;
@@ -154,6 +148,7 @@ export async function analyzeWallet(address, options = {}) {
   let feesSol = 0;
   const creatorRewardsByMint = {};
   let creatorRewardCount = 0;
+  let creatorRewardTokenAmount = 0;
   let unmatchedSellProceedsSol = 0;
   let unmatchedSoldTokens = 0;
   let unknownCostSellProceedsSol = 0;
@@ -168,8 +163,8 @@ export async function analyzeWallet(address, options = {}) {
   const dexCounts = {};
   for (const reward of rewards) {
     creatorRewardCount++;
-    creatorRewardsByMint[reward.quoteMint] =
-      (creatorRewardsByMint[reward.quoteMint] || 0) + reward.amount;
+    creatorRewardTokenAmount += reward.amount;
+    creatorRewardsByMint[reward.quoteMint] = (creatorRewardsByMint[reward.quoteMint] || 0) + reward.amount;
   }
 
   const tradeTypeCounts = { BUY: 0, SELL: 0 };
@@ -205,8 +200,7 @@ export async function analyzeWallet(address, options = {}) {
     if (position.realizedPnl < 0) losingPositions++;
   }
 
-  const rankedPositions = [...positionList]
-    .sort((a, b) => b.totalPnl - a.totalPnl);
+  const rankedPositions = [...positionList].sort((a, b) => b.totalPnl - a.totalPnl);
   const bestTrades = rankedPositions.slice(0, 3).map(summarizePosition);
   const worstTrades = rankedPositions.slice(-3).reverse().map(summarizePosition);
   const matchedPositions = winningPositions + losingPositions;
@@ -223,6 +217,7 @@ export async function analyzeWallet(address, options = {}) {
     transferOutCount: transferCounts.OUT,
     transferTokenCount: transferMints.size,
     creatorRewardCount,
+    creatorRewardTokenAmount: round(creatorRewardTokenAmount),
     creatorRewardsByMint,
     buyCount: tradeTypeCounts.BUY,
     sellCount: tradeTypeCounts.SELL,
@@ -245,18 +240,10 @@ export async function analyzeWallet(address, options = {}) {
     closedPositions,
     winningPositions,
     losingPositions,
-    winRate: matchedPositions > 0
-      ? round((winningPositions / matchedPositions) * 100, 2)
-      : null,
-    openExposureCostSol: round(
-      openTokens.reduce((sum, position) => sum + position.remainingCostSol, 0)
-    ),
-    openMarkedValueSol: round(
-      openTokens.reduce((sum, position) => sum + position.unrealizedValueSol, 0)
-    ),
-    unknownCostMarkedValueSol: round(
-      openTokens.reduce((sum, position) => sum + position.unknownCostMarkedValueSol, 0)
-    ),
+    winRate: matchedPositions > 0 ? round((winningPositions / matchedPositions) * 100, 2) : null,
+    openExposureCostSol: round(openTokens.reduce((sum, position) => sum + position.remainingCostSol, 0)),
+    openMarkedValueSol: round(openTokens.reduce((sum, position) => sum + position.unrealizedValueSol, 0)),
+    unknownCostMarkedValueSol: round(openTokens.reduce((sum, position) => sum + position.unknownCostMarkedValueSol, 0)),
     best: bestTrades[0] || null,
     worst: worstTrades[0] || null,
     bestTrades,
@@ -282,12 +269,10 @@ if (process.argv[1]?.endsWith("walletAnalyzer.js")) {
   if (!address) {
     const samples = await getTradeSamples(1);
     address = samples[0]?.wallet_address || null;
-
     if (!address) {
       console.error("No hay ninguna wallet con trades en Supabase.");
       process.exit(1);
     }
-
     console.log(`Wallet seleccionada automáticamente desde Supabase: ${address}`);
   }
 
