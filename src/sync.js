@@ -231,8 +231,10 @@ async function enrichFromTokenAccounts({
           });
         }
 
-        await upsertTransactions(txRows);
-        await upsertTransfers(transferRows);
+        await Promise.all([
+          upsertTransactions(txRows),
+          upsertTransfers(transferRows)
+        ]);
         supplementalTransactionsStored += txRows.length;
         supplementalTransfersStored += transferRows.length;
 
@@ -382,10 +384,12 @@ export async function syncWalletHistory(address, options = {}) {
       }
 
       await replaceWalletEventsForSignatures(address, reparsedSignatures);
-      await upsertTransactions(txRows);
-      await upsertTrades(tradeRows);
-      await upsertTransfers(transferRows);
-      await upsertRewards(rewardRows);
+      await Promise.all([
+        upsertTransactions(txRows),
+        upsertTrades(tradeRows),
+        upsertTransfers(transferRows),
+        upsertRewards(rewardRows)
+      ]);
 
       total += txRows.length;
       tradesStored += tradeRows.length;
