@@ -61,13 +61,28 @@ async function heliusRequest(method, params, id) {
 
 export async function getTransactionsForAddress(
   address,
-  paginationToken = null
+  paginationToken = null,
+  requestOptions = {}
 ) {
+  const tokenAccounts =
+    requestOptions.tokenAccounts ??
+    process.env.HELIUS_TOKEN_ACCOUNTS_FILTER ??
+    "balanceChanged";
+
   const options = {
     transactionDetails: "full",
     limit: 100,
-    sortOrder: "desc"
+    sortOrder: requestOptions.sortOrder || "desc"
   };
+
+  if (tokenAccounts && tokenAccounts !== "none") {
+    options.filters = {
+      ...(requestOptions.filters || {}),
+      tokenAccounts
+    };
+  } else if (requestOptions.filters) {
+    options.filters = requestOptions.filters;
+  }
 
   if (paginationToken) {
     options.paginationToken = paginationToken;
