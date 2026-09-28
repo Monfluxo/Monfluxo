@@ -1,4 +1,9 @@
-import { getTradeSamples, getSyncState, upsertSyncState } from "./db.js";
+import {
+  assertEventModelV2Schema,
+  getTradeSamples,
+  getSyncState,
+  upsertSyncState
+} from "./db.js";
 import { syncWalletHistory } from "./sync.js";
 import { analyzeWallet } from "./walletAnalyzer.js";
 
@@ -14,9 +19,17 @@ if (!address) {
   process.exit(1);
 }
 
+try {
+  await assertEventModelV2Schema();
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+
 const previous = await getSyncState(address);
 
 console.log(`Wallet: ${address}`);
+console.log("Event Model v2 schema: OK");
 console.log("Forzando escaneo histórico completo desde Helius...");
 
 await upsertSyncState({
@@ -42,7 +55,7 @@ try {
   console.log(JSON.stringify(sync, null, 2));
 
   console.log("Recalculando posiciones y métricas...");
-  const analysis = await analyzeWallet(address, { mode: "deep" });
+  const analysis = await analyzeWallet(address, { mode: "incremental" });
 
   console.log("ANALYSIS");
   console.log(JSON.stringify(analysis.metrics, null, 2));
