@@ -83,9 +83,9 @@ function normalizedTransfer(wallet, transfer) {
       ? transfer.instructionIndex
       : null,
     block_time: isoFromBlockTime(transfer.blockTime),
+    mint: transfer.mint,
     direction: transfer.direction,
-    token_mint: transfer.mint,
-    token_amount: transfer.amount,
+    amount: transfer.amount,
     raw_amount: transfer.rawAmount,
     decimals: transfer.decimals,
     source_address: transfer.sourceAddress ?? null,
