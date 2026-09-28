@@ -1,5 +1,6 @@
 -- MONFLUXO Event Model v2
 alter table wallet_trades add column if not exists event_index integer not null default 0;
+alter table wallet_trades add column if not exists instruction_index integer;
 alter table wallet_trades drop constraint if exists wallet_trades_wallet_address_signature_key;
 create unique index if not exists idx_wallet_trades_event_unique
   on wallet_trades(wallet_address, signature, event_index);
@@ -11,9 +12,9 @@ create table if not exists wallet_transfers (
   event_index integer not null default 0,
   instruction_index integer,
   block_time timestamptz,
-  mint text not null,
   direction text not null check (direction in ('IN','OUT')),
-  amount numeric not null,
+  token_mint text not null,
+  token_amount numeric not null,
   raw_amount numeric not null,
   decimals integer not null default 0,
   source_address text,
@@ -25,4 +26,4 @@ create table if not exists wallet_transfers (
   unique (wallet_address, signature, event_index)
 );
 create index if not exists idx_wallet_transfers_wallet_time on wallet_transfers(wallet_address, block_time desc);
-create index if not exists idx_wallet_transfers_mint_time on wallet_transfers(mint, block_time desc);
+create index if not exists idx_wallet_transfers_mint_time on wallet_transfers(token_mint, block_time desc);
