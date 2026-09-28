@@ -35,6 +35,18 @@ function queryEncode(value) {
   return encodeURIComponent(value);
 }
 
+export async function assertEventModelV2Schema() {
+  try {
+    await request("wallet_trades?select=wallet_address,signature,event_index,instruction_index&limit=1");
+    await request("wallet_transfers?select=wallet_address,signature,event_index,instruction_index,token_mint,token_amount&limit=1");
+  } catch (error) {
+    throw new Error(
+      `Event Model v2 schema is not ready. Apply db/migrations/2026-09-28_event_model_v2.sql in Supabase before reindexing. ${error.message}`
+    );
+  }
+  return true;
+}
+
 export async function walletExists(address) {
   const rows = await request(
     `wallets?address=eq.${queryEncode(address)}&select=address&limit=1`
