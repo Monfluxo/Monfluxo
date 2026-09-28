@@ -27,11 +27,24 @@ function round(value, decimals = 6) {
   return Math.round(number * factor) / factor;
 }
 
+function coverage(sync) {
+  const mainHistoryCapped = Number(sync?.pages || 0) >= MAX_DEEP_PAGES;
+  return {
+    mainHistoryComplete: !mainHistoryCapped,
+    mainHistoryCapped,
+    maxDeepPages: MAX_DEEP_PAGES,
+    pagesScanned: Number(sync?.pages || 0),
+    transactionsScanned: Number(sync?.transactionsStored || 0)
+  };
+}
+
 function evaluate(metrics, sync) {
   const errors = [];
   const warnings = [];
+  const info = [];
   const unmatchedTokens = Number(metrics.unmatchedSoldTokens || 0);
   const unmatchedSol = Number(metrics.unmatchedSellProceedsSol || 0);
+  const scanCoverage = coverage(sync);
 
   if (sync?.status !== "idle") errors.push(`sync status=${sync?.status || "unknown"}`);
   if (!Number.isFinite(Number(metrics.tradesAnalyzed))) errors.push("invalid tradesAnalyzed");
@@ -42,28 +55,43 @@ function evaluate(metrics, sync) {
   if (Number(metrics.creatorRewardCount || 0) < 0) errors.push("negative creatorRewardCount");
   if (Number(metrics.creatorRewardTokenAmount || 0) < 0) errors.push("negative creatorRewardTokenAmount");
 
-  if (unmatchedSol > UNMATCHED_SOL_WARN) {
-    warnings.push(`unmatched sell proceeds ${round(unmatchedSol, 9)} SOL > ${UNMATCHED_SOL_WARN} SOL`);
+  if (scanCoverage.mainHistoryCapped) {
+    info.push(
+      `history truncated at ${MAX_DEEP_PAGES} pages / ${scanCoverage.transactionsScanned} transactions; unmatched accounting is non-diagnostic until older history is indexed`
+    );
+  } else {
+    if (unmatchedSol > UNMATCHED_SOL_WARN) {
+      warnings.push(`unmatched sell proceeds ${round(unmatchedSol, 9)} SOL > ${UNMATCHED_SOL_WARN} SOL`);
+    }
+    if (unmatchedTokens > 0 && unmatchedSol === 0) {
+      warnings.push(`token dust remains unmatched: ${unmatchedTokens}`);
+    }
   }
-  if (unmatchedTokens > 0 && unmatchedSol === 0) {
-    warnings.push(`token dust remains unmatched: ${unmatchedTokens}`);
-  }
+
   if (metrics.pnlComplete === false && Number(metrics.incompletePnlPositions || 0) === 0) {
     errors.push("pnlComplete=false but incompletePnlPositions=0");
   }
 
+  const verdict = errors.length
+    ? "ERROR"
+    : scanCoverage.mainHistoryCapped
+      ? "INCOMPLETE"
+      : warnings.length
+        ? "REVIEW"
+        : "PASS";
+
   return {
-    pass: errors.length === 0 && warnings.length === 0,
+    verdict,
     errors,
-    warnings
+    warnings,
+    info,
+    coverage: scanCoverage
   };
 }
 
 async function forceDeepRegression(address) {
   const previous = await getSyncState(address);
 
-  // wallet_sync_state references wallets(address). New regression wallets must
-  // be registered before the sync cursor can be reset.
   await upsertWallet({
     address,
     updated_at: new Date().toISOString()
@@ -89,13 +117,15 @@ async function forceDeepRegression(address) {
     });
     const analysis = await analyzeWallet(address, { mode: "incremental" });
     const metrics = analysis.metrics;
-    const verdict = evaluate(metrics, sync);
+    const evaluation = evaluate(metrics, sync);
 
     return {
       wallet: address,
-      verdict: verdict.pass ? "PASS" : "REVIEW",
-      errors: verdict.errors,
-      warnings: verdict.warnings,
+      verdict: evaluation.verdict,
+      errors: evaluation.errors,
+      warnings: evaluation.warnings,
+      info: evaluation.info,
+      coverage: evaluation.coverage,
       sync: {
         pages: sync.pages,
         transactionsStored: sync.transactionsStored,
@@ -130,6 +160,8 @@ async function forceDeepRegression(address) {
       verdict: "ERROR",
       errors: [error.message],
       warnings: [],
+      info: [],
+      coverage: null,
       sync: null,
       accounting: null
     };
@@ -140,6 +172,7 @@ await assertEventModelV2Schema();
 const wallets = walletList();
 console.log(`MONFLUXO REGRESSION: ${wallets.length} wallet(s)`);
 console.log(`Unmatched proceeds warning threshold: ${UNMATCHED_SOL_WARN} SOL`);
+console.log(`Deep history cap: ${MAX_DEEP_PAGES} pages`);
 
 const results = [];
 for (let index = 0; index < wallets.length; index++) {
@@ -154,6 +187,7 @@ const summary = {
   generatedAt: new Date().toISOString(),
   wallets: results.length,
   passed: results.filter((item) => item.verdict === "PASS").length,
+  incomplete: results.filter((item) => item.verdict === "INCOMPLETE").length,
   review: results.filter((item) => item.verdict === "REVIEW").length,
   errors: results.filter((item) => item.verdict === "ERROR").length,
   results
