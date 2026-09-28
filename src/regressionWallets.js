@@ -15,6 +15,7 @@ const PAUSE_MS = Number(process.env.REGRESSION_PAUSE_MS || 1500);
 const MAX_RUNTIME_MS = Number(process.env.REGRESSION_MAX_RUNTIME_MS || 10 * 60 * 1000);
 const RESET_HISTORY = process.env.REGRESSION_RESET_HISTORY === "true";
 const STORE_RAW = process.env.REGRESSION_STORE_RAW === "true";
+const ANALYZE_PARTIAL = process.env.REGRESSION_ANALYZE_PARTIAL === "true";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,6 +41,23 @@ function evaluate(metrics, historyComplete, backfillPending) {
   const errors = [];
   const warnings = [];
   const info = [];
+
+  if (!historyComplete) {
+    info.push("historical backfill remains incomplete; full accounting evaluation deferred until historyComplete=true");
+    if (!backfillPending) errors.push("history incomplete but no resume cursor is available");
+    return {
+      verdict: errors.length ? "ERROR" : "INCOMPLETE",
+      errors,
+      warnings,
+      info
+    };
+  }
+
+  if (!metrics) {
+    errors.push("history complete but final metrics were not calculated");
+    return { verdict: "ERROR", errors, warnings, info };
+  }
+
   const unmatchedTokens = Number(metrics.unmatchedSoldTokens || 0);
   const unmatchedSol = Number(metrics.unmatchedSellProceedsSol || 0);
 
@@ -51,29 +69,21 @@ function evaluate(metrics, historyComplete, backfillPending) {
   if (Number(metrics.creatorRewardCount || 0) < 0) errors.push("negative creatorRewardCount");
   if (Number(metrics.creatorRewardTokenAmount || 0) < 0) errors.push("negative creatorRewardTokenAmount");
 
-  if (!historyComplete) {
-    info.push("historical backfill remains incomplete; unmatched accounting is non-diagnostic until historyComplete=true");
-    if (!backfillPending) errors.push("history incomplete but no resume cursor is available");
-  } else {
-    if (unmatchedSol > UNMATCHED_SOL_WARN) {
-      warnings.push(`unmatched sell proceeds ${round(unmatchedSol, 9)} SOL > ${UNMATCHED_SOL_WARN} SOL`);
-    }
-    if (unmatchedTokens > 0 && unmatchedSol === 0) {
-      warnings.push(`token dust remains unmatched: ${unmatchedTokens}`);
-    }
+  if (unmatchedSol > UNMATCHED_SOL_WARN) {
+    warnings.push(`unmatched sell proceeds ${round(unmatchedSol, 9)} SOL > ${UNMATCHED_SOL_WARN} SOL`);
   }
-
+  if (unmatchedTokens > 0 && unmatchedSol === 0) {
+    warnings.push(`token dust remains unmatched: ${unmatchedTokens}`);
+  }
   if (metrics.pnlComplete === false && Number(metrics.incompletePnlPositions || 0) === 0) {
     errors.push("pnlComplete=false but incompletePnlPositions=0");
   }
 
   const verdict = errors.length
     ? "ERROR"
-    : !historyComplete
-      ? "INCOMPLETE"
-      : warnings.length
-        ? "REVIEW"
-        : "PASS";
+    : warnings.length
+      ? "REVIEW"
+      : "PASS";
 
   return { verdict, errors, warnings, info };
 }
@@ -172,10 +182,18 @@ async function runWalletRegression(address) {
     }
 
     state = await getSyncState(address);
-    const analysis = await analyzeWallet(address, { mode: "incremental" });
-    const metrics = analysis.metrics;
     const historyComplete = state?.history_complete === true;
     const backfillPending = !historyComplete && Boolean(state?.backfill_pagination_token);
+
+    let metrics = null;
+    let metricsStatus = "deferred";
+    if (historyComplete || ANALYZE_PARTIAL) {
+      console.log(historyComplete ? "  calculating final metrics..." : "  calculating partial metrics...");
+      const analysis = await analyzeWallet(address, { mode: "incremental" });
+      metrics = analysis.metrics;
+      metricsStatus = historyComplete ? "final" : "partial";
+    }
+
     const evaluation = evaluate(metrics, historyComplete, backfillPending);
 
     return {
@@ -204,7 +222,8 @@ async function runWalletRegression(address) {
         tokenAccountsFilter: lastSync.tokenAccountsFilter,
         tokenAccountEnrichment: lastSync.tokenAccountEnrichment || null
       } : null,
-      accounting: {
+      metricsStatus,
+      accounting: metrics ? {
         tradesAnalyzed: metrics.tradesAnalyzed,
         transfersAnalyzed: metrics.transfersAnalyzed,
         creatorRewardCount: metrics.creatorRewardCount,
@@ -215,7 +234,7 @@ async function runWalletRegression(address) {
         unknownCostSellProceedsSol: metrics.unknownCostSellProceedsSol,
         incompletePnlPositions: metrics.incompletePnlPositions,
         pnlComplete: metrics.pnlComplete
-      }
+      } : null
     };
   } catch (error) {
     return {
@@ -227,6 +246,7 @@ async function runWalletRegression(address) {
       info: [],
       coverage: null,
       sync: null,
+      metricsStatus: "unavailable",
       accounting: null
     };
   }
@@ -239,6 +259,7 @@ console.log(`Batch pages: ${BATCH_PAGES}`);
 console.log(`Max batches/wallet: ${MAX_BATCHES}`);
 console.log(`Runtime budget/wallet: ${MAX_RUNTIME_MS}ms`);
 console.log(`Reset historical cursor: ${RESET_HISTORY}`);
+console.log(`Analyze partial history: ${ANALYZE_PARTIAL}`);
 
 const results = [];
 for (let index = 0; index < wallets.length; index++) {
