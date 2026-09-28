@@ -38,8 +38,8 @@ function mapTransfer(row) {
       ? Math.floor(new Date(row.block_time).getTime() / 1000)
       : null,
     direction: row.direction,
-    mint: row.mint,
-    amount: Number(row.amount),
+    mint: row.token_mint,
+    amount: Number(row.token_amount),
     rawAmount: row.raw_amount,
     decimals: Number(row.decimals || 0),
     sourceAddress: row.source_address,
