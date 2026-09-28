@@ -1,78 +1,47 @@
-import { parseSwapTransaction, parseCreatorFeeClaims } from "./swapParser.js";
+import { parseCreatorFeeClaims } from "./swapParser.js";
+import { parseSwapTransactions, parseTokenMovements } from "./eventParser.js";
 
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const SOL_TRADE_EPSILON = 0.00001;
-
-const RAYDIUM_AMM_V4 = "675kPX9MHTjS2zt1qfr1NYHuZeLXfQM9H24yFSUt1Mp8";
-const JUPITER_ROUTER = "proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u";
-const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
-const PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
-const PUMP_AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 
 function result(type, extra = {}) {
   return {
     type,
     tokenChanges: [],
     solChange: null,
+    trades: [],
+    transfers: [],
+    rewards: [],
     trade: null,
     ...extra
   };
 }
 
 function getSignature(transaction) {
-  return (
-    transaction?.transaction?.signatures?.[0] ||
-    transaction?.signature ||
-    null
-  );
+  return transaction?.transaction?.signatures?.[0] || transaction?.signature || null;
 }
 
 function getAccountKeyValue(key) {
-  return typeof key === "string"
-    ? key
-    : key?.pubkey || key?.address || null;
+  return typeof key === "string" ? key : key?.pubkey || key?.address || null;
 }
 
 function getTokenChanges(transaction, wallet) {
   const preBalances = transaction?.meta?.preTokenBalances || [];
   const postBalances = transaction?.meta?.postTokenBalances || [];
-
   const allMints = new Set([
     ...preBalances.map((x) => x.mint).filter(Boolean),
     ...postBalances.map((x) => x.mint).filter(Boolean)
   ]);
-
   const changes = [];
 
   for (const mint of allMints) {
-    const pre = preBalances.filter(
-      (x) => x.mint === mint && x.owner === wallet
-    );
-    const post = postBalances.filter(
-      (x) => x.mint === mint && x.owner === wallet
-    );
-
-    const before = pre.reduce(
-      (total, item) =>
-        total + BigInt(item.uiTokenAmount?.amount || "0"),
-      0n
-    );
-
-    const after = post.reduce(
-      (total, item) =>
-        total + BigInt(item.uiTokenAmount?.amount || "0"),
-      0n
-    );
-
+    const pre = preBalances.filter((x) => x.mint === mint && x.owner === wallet);
+    const post = postBalances.filter((x) => x.mint === mint && x.owner === wallet);
+    const before = pre.reduce((total, item) => total + BigInt(item.uiTokenAmount?.amount || "0"), 0n);
+    const after = post.reduce((total, item) => total + BigInt(item.uiTokenAmount?.amount || "0"), 0n);
     const change = after - before;
-
     if (change === 0n) continue;
-
-    const decimals =
-      post[0]?.uiTokenAmount?.decimals ??
-      pre[0]?.uiTokenAmount?.decimals ??
-      0;
-
+    const decimals = post[0]?.uiTokenAmount?.decimals ?? pre[0]?.uiTokenAmount?.decimals ?? 0;
     changes.push({
       mint,
       rawChange: change.toString(),
@@ -81,7 +50,6 @@ function getTokenChanges(transaction, wallet) {
       direction: change > 0n ? "IN" : "OUT"
     });
   }
-
   return changes;
 }
 
@@ -92,23 +60,11 @@ function getSolChange(transaction, wallet) {
     ...(transaction?.meta?.loadedAddresses?.writable || []),
     ...(transaction?.meta?.loadedAddresses?.readonly || [])
   ];
-
-  const walletIndex = accountKeys.findIndex(
-    (key) => getAccountKeyValue(key) === wallet
-  );
-
-  if (
-    walletIndex < 0 ||
-    !Array.isArray(meta?.preBalances) ||
-    !Array.isArray(meta?.postBalances)
-  ) {
-    return null;
-  }
-
+  const walletIndex = accountKeys.findIndex((key) => getAccountKeyValue(key) === wallet);
+  if (walletIndex < 0 || !Array.isArray(meta?.preBalances) || !Array.isArray(meta?.postBalances)) return null;
   const before = BigInt(meta.preBalances[walletIndex] || 0);
   const after = BigInt(meta.postBalances[walletIndex] || 0);
   const rawChange = after - before;
-
   return {
     rawChange: rawChange.toString(),
     solChange: Number(rawChange) / 1e9,
@@ -116,179 +72,83 @@ function getSolChange(transaction, wallet) {
   };
 }
 
-function detectDex(transaction) {
-  const programs = new Set([
-    RAYDIUM_AMM_V4,
-    JUPITER_ROUTER,
-    JUPITER_V6,
-    PUMP_FUN,
-    PUMP_AMM
-  ]);
-
-  const accountKeys = [
-    ...(transaction?.transaction?.message?.accountKeys || []),
-    ...(transaction?.meta?.loadedAddresses?.writable || []),
-    ...(transaction?.meta?.loadedAddresses?.readonly || [])
-  ];
-
-  const keyValue = (key) =>
-    typeof key === "string" ? key : key?.pubkey || key?.address || null;
-
-  const matches = (instruction) => {
-    const id =
-      instruction?.programId ||
-      instruction?.program ||
-      keyValue(accountKeys[instruction?.programIdIndex]);
-    return programs.has(id) ? id : null;
-  };
-
-  const ids = [
-    ...(transaction?.transaction?.message?.instructions || []),
-    ...(transaction?.meta?.innerInstructions || []).flatMap(
-      (group) => group.instructions || []
-    )
-  ].map(matches).filter(Boolean);
-
-  if (ids.includes(JUPITER_ROUTER) || ids.includes(JUPITER_V6)) return "jupiter";
-  if (ids.includes(RAYDIUM_AMM_V4)) return "raydium_amm_v4";
-  if (ids.includes(PUMP_AMM)) return "pump_amm";
-  if (ids.includes(PUMP_FUN)) return "pump_fun";
-  return null;
-}
-
-function buildLegacyTrade(transaction, wallet, type, tokenChange, solChange) {
-  const dex = detectDex(transaction);
-  const feeSol = Number(transaction?.meta?.fee || 0) / 1e9;
-  const netSol = Math.abs(solChange.solChange);
-  const grossSol = netSol + feeSol;
-
-  if (!Number.isFinite(grossSol) || grossSol <= SOL_TRADE_EPSILON) {
-    return null;
-  }
-
+function normalizeSwap(wallet, swap, fallbackIndex = 0) {
+  const tokenMint = swap.type === "BUY" ? swap.outputMint : swap.inputMint;
+  const tokenAmount = swap.type === "BUY" ? swap.outputAmount : swap.inputAmount;
+  const solAmount = swap.type === "BUY" ? swap.inputAmount : swap.outputAmount;
   return {
     wallet,
-    type,
-    tokenMint: tokenChange.mint,
-    tokenAmount: tokenChange.amount,
-    solAmount: grossSol,
-    feeSol,
-    estimatedPriceSol: grossSol / tokenChange.amount,
-    signature: getSignature(transaction),
-    blockTime: transaction?.blockTime || null,
-    parser: "legacy_balance",
-    dex: dex || null
+    type: swap.type,
+    tokenMint,
+    tokenAmount,
+    solAmount,
+    feeSol: swap.feeSol,
+    estimatedPriceSol: swap.estimatedPriceSol,
+    signature: swap.signature,
+    blockTime: swap.blockTime,
+    eventIndex: swap.eventIndex ?? fallbackIndex,
+    instructionIndex: swap.instructionIndex ?? null,
+    dex: swap.dex,
+    parser: "instruction_swap_v2"
   };
 }
 
 export function parseTransaction(transaction, wallet) {
-  if (!transaction?.meta) {
-    return result("OTHER", { reason: "Missing transaction metadata" });
-  }
+  if (!transaction?.meta) return result("OTHER", { reason: "Missing transaction metadata" });
 
-  // Creator fee withdrawals are rewards, not trades. Detect them before
-  // any swap or legacy balance heuristic so a fee claim can never become a BUY.
-  const creatorFeeClaims = parseCreatorFeeClaims(transaction, wallet);
+  const tokenChanges = getTokenChanges(transaction, wallet);
+  const solChange = getSolChange(transaction, wallet);
+  const rewards = parseCreatorFeeClaims(transaction, wallet);
 
-  if (creatorFeeClaims.length > 0) {
+  if (rewards.length > 0) {
     return result("CREATOR_FEE_CLAIM", {
-      reason: "Pump collect_creator_fee_v2",
-      tokenChanges: getTokenChanges(transaction, wallet),
-      solChange: getSolChange(transaction, wallet),
-      rewards: creatorFeeClaims
+      reason: "Pump creator fee claim",
+      tokenChanges,
+      solChange,
+      rewards,
+      transfers: parseTokenMovements(transaction, wallet, { rewards })
     });
   }
 
-  // First use instruction-level swap extraction for supported DEXes.
-  // This avoids treating unrelated SOL movements (rent, transfers, fees)
-  // as part of the trade.
-  const swap = parseSwapTransaction(transaction, wallet);
+  const swaps = parseSwapTransactions(transaction, wallet);
+  const trades = swaps.map((swap, index) => normalizeSwap(wallet, swap, index));
+  const transfers = parseTokenMovements(transaction, wallet, { trades, rewards: [] });
 
-  if (swap) {
-    const tokenMint =
-      swap.type === "BUY" ? swap.outputMint : swap.inputMint;
-    const tokenAmount =
-      swap.type === "BUY" ? swap.outputAmount : swap.inputAmount;
-    const solAmount =
-      swap.type === "BUY" ? swap.inputAmount : swap.outputAmount;
-
+  if (trades.length > 0) {
+    const type = trades.length === 1 ? trades[0].type : "MULTI_TRADE";
     return {
-      type: swap.type,
-      reason: "Instruction-level DEX swap",
-      tokenChanges: getTokenChanges(transaction, wallet),
-      solChange: getSolChange(transaction, wallet),
-      trade: {
-        wallet,
-        type: swap.type,
-        tokenMint,
-        tokenAmount,
-        solAmount,
-        feeSol: swap.feeSol,
-        estimatedPriceSol: swap.estimatedPriceSol,
-        signature: swap.signature,
-        blockTime: swap.blockTime,
-        dex: swap.dex,
-        parser: "instruction_swap"
-      }
+      type,
+      reason: trades.length === 1
+        ? "Instruction-level DEX swap"
+        : "Multiple instruction-level DEX swaps",
+      tokenChanges,
+      solChange,
+      trades,
+      transfers,
+      rewards: [],
+      trade: trades[0] || null
     };
   }
 
-  // Temporary fallback for unsupported transaction types/DEXes.
-  // These trades are explicitly marked as legacy_balance so they are not
-  // mistaken for instruction-level accuracy.
-  const tokenChanges = getTokenChanges(transaction, wallet);
-  const solChange = getSolChange(transaction, wallet);
-
-  const nonWsolChanges = tokenChanges.filter(
-    (change) => change.mint !== WSOL_MINT
-  );
-
+  const nonWsolChanges = tokenChanges.filter((change) => change.mint !== WSOL_MINT);
   const tokenIn = nonWsolChanges.filter((x) => x.direction === "IN");
   const tokenOut = nonWsolChanges.filter((x) => x.direction === "OUT");
-
-  const meaningfulSol =
-    solChange && Math.abs(solChange.solChange) > SOL_TRADE_EPSILON;
+  const meaningfulSol = solChange && Math.abs(solChange.solChange) > SOL_TRADE_EPSILON;
 
   let type = "OTHER";
-  let trade = null;
-
-  if (tokenIn.length === 1 && meaningfulSol && solChange.direction === "OUT") {
-    type = "BUY";
-    trade = buildLegacyTrade(
-      transaction,
-      wallet,
-      type,
-      tokenIn[0],
-      solChange
-    );
-  } else if (
-    tokenOut.length === 1 &&
-    meaningfulSol &&
-    solChange.direction === "IN"
-  ) {
-    type = "SELL";
-    trade = buildLegacyTrade(
-      transaction,
-      wallet,
-      type,
-      tokenOut[0],
-      solChange
-    );
-  } else if (tokenIn.length > 0 && !meaningfulSol) {
-    type = "TRANSFER_IN";
-  } else if (tokenOut.length > 0 && !meaningfulSol) {
-    type = "TRANSFER_OUT";
-  } else if (meaningfulSol && tokenIn.length === 0 && tokenOut.length === 0) {
-    type = "SOL_TRANSFER";
-  }
+  if (tokenIn.length > 0 && !meaningfulSol) type = "TRANSFER_IN";
+  else if (tokenOut.length > 0 && !meaningfulSol) type = "TRANSFER_OUT";
+  else if (meaningfulSol && tokenIn.length === 0 && tokenOut.length === 0) type = "SOL_TRANSFER";
 
   return {
     type,
-    reason: trade
-      ? "Legacy balance-based classification"
-      : "Balance movement classification",
+    reason: "Event-model balance movement classification",
     tokenChanges,
     solChange,
-    trade
+    trades: [],
+    transfers,
+    rewards: [],
+    trade: null,
+    signature: getSignature(transaction)
   };
 }
