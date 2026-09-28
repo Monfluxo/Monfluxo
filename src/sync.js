@@ -6,7 +6,9 @@ import {
   upsertSyncState,
   upsertTransactions,
   upsertTrades,
-  upsertRewards
+  upsertTransfers,
+  upsertRewards,
+  replaceWalletEventsForSignatures
 } from "./db.js";
 
 function signatureOf(tx) {
@@ -51,10 +53,15 @@ function normalizedReward(wallet, reward) {
     source: reward.parser
   };
 }
+
 function normalizedTrade(wallet, trade) {
   return {
     wallet_address: wallet,
     signature: trade.signature,
+    event_index: Number.isInteger(trade.eventIndex) ? trade.eventIndex : 0,
+    instruction_index: Number.isInteger(trade.instructionIndex)
+      ? trade.instructionIndex
+      : null,
     block_time: isoFromBlockTime(trade.blockTime),
     type: trade.type,
     token_mint: trade.tokenMint,
@@ -64,6 +71,28 @@ function normalizedTrade(wallet, trade) {
     fee_sol: trade.feeSol ?? null,
     dex: trade.dex ?? null,
     parser: trade.parser ?? null
+  };
+}
+
+function normalizedTransfer(wallet, transfer) {
+  return {
+    wallet_address: wallet,
+    signature: transfer.signature,
+    event_index: Number.isInteger(transfer.eventIndex) ? transfer.eventIndex : 0,
+    instruction_index: Number.isInteger(transfer.instructionIndex)
+      ? transfer.instructionIndex
+      : null,
+    block_time: isoFromBlockTime(transfer.blockTime),
+    direction: transfer.direction,
+    token_mint: transfer.mint,
+    token_amount: transfer.amount,
+    raw_amount: transfer.rawAmount,
+    decimals: transfer.decimals,
+    source_address: transfer.sourceAddress ?? null,
+    destination_address: transfer.destinationAddress ?? null,
+    source_token_account: transfer.sourceTokenAccount ?? null,
+    destination_token_account: transfer.destinationTokenAccount ?? null,
+    parser: transfer.parser ?? null
   };
 }
 
@@ -96,6 +125,9 @@ export async function syncWalletHistory(address, options = {}) {
   let paginationToken = null;
   let page = 0;
   let total = 0;
+  let tradesStored = 0;
+  let transfersStored = 0;
+  let rewardsStored = 0;
   let stoppedOnExisting = false;
   let newest = null;
   let oldest = null;
@@ -111,14 +143,14 @@ export async function syncWalletHistory(address, options = {}) {
 
       const txRows = [];
       const tradeRows = [];
+      const transferRows = [];
       const rewardRows = [];
+      const reparsedSignatures = [];
 
       for (const tx of transactions) {
         const signature = signatureOf(tx);
         if (!signature) continue;
 
-        // Helius returns newest -> oldest. Once we hit the last
-        // transaction already indexed, everything after it is known.
         const alreadyKnown =
           previous?.newest_signature === signature &&
           (mode !== "deep" || previous?.history_complete === true);
@@ -129,16 +161,23 @@ export async function syncWalletHistory(address, options = {}) {
         }
 
         const analysis = parseTransaction(tx, address);
+        reparsedSignatures.push(signature);
         txRows.push(normalizedTransaction(address, tx, analysis, storeRaw));
 
-        if (analysis?.trade?.type === "BUY" || analysis?.trade?.type === "SELL") {
-          tradeRows.push(normalizedTrade(address, analysis.trade));
+        for (const trade of analysis?.trades || []) {
+          if (trade?.type === "BUY" || trade?.type === "SELL") {
+            tradeRows.push(normalizedTrade(address, trade));
+          }
         }
 
-        if (analysis?.type === "CREATOR_FEE_CLAIM") {
-          for (const reward of analysis.rewards || []) {
-            rewardRows.push(normalizedReward(address, reward));
+        for (const transfer of analysis?.transfers || []) {
+          if (transfer?.direction === "IN" || transfer?.direction === "OUT") {
+            transferRows.push(normalizedTransfer(address, transfer));
           }
+        }
+
+        for (const reward of analysis?.rewards || []) {
+          rewardRows.push(normalizedReward(address, reward));
         }
 
         if (typeof tx?.blockTime === "number") {
@@ -151,10 +190,16 @@ export async function syncWalletHistory(address, options = {}) {
         }
       }
 
+      await replaceWalletEventsForSignatures(address, reparsedSignatures);
       await upsertTransactions(txRows);
       await upsertTrades(tradeRows);
+      await upsertTransfers(transferRows);
       await upsertRewards(rewardRows);
+
       total += txRows.length;
+      tradesStored += tradeRows.length;
+      transfersStored += transferRows.length;
+      rewardsStored += rewardRows.length;
 
       if (stoppedOnExisting) break;
 
@@ -201,6 +246,9 @@ export async function syncWalletHistory(address, options = {}) {
       mode,
       pages: page,
       transactionsStored: total,
+      tradesStored,
+      transfersStored,
+      rewardsStored,
       stoppedOnExisting,
       status: "idle"
     };
