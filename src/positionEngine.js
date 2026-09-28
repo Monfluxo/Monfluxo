@@ -1,75 +1,220 @@
 const EPSILON = 0.000000001;
 
-export function buildPositions(trades) {
-  const positions = new Map();
+function finitePositive(value) {
+  return Number.isFinite(value) && value > 0;
+}
 
-  for (const trade of trades) {
+function ensurePosition(positions, mint, blockTime = null) {
+  if (!positions.has(mint)) {
+    positions.set(mint, {
+      mint,
+      buys: 0,
+      sells: 0,
+      tradeCount: 0,
+      transferIns: 0,
+      transferOuts: 0,
+      transferCount: 0,
+      tokensBought: 0,
+      tokensSold: 0,
+      tokensTransferredIn: 0,
+      tokensTransferredOut: 0,
+      tokensRemaining: 0,
+      solSpent: 0,
+      solReceived: 0,
+      realizedPnl: 0,
+      realizedCostBasis: 0,
+      feesSol: 0,
+      matchedSoldTokens: 0,
+      knownCostSoldTokens: 0,
+      unknownCostSoldTokens: 0,
+      unknownCostSellProceedsSol: 0,
+      unmatchedSoldTokens: 0,
+      unmatchedSellProceedsSol: 0,
+      unmatchedTransferredOutTokens: 0,
+      transferredOutKnownCostSol: 0,
+      holdingSecondsWeighted: 0,
+      firstBlockTime: blockTime,
+      lastBlockTime: blockTime,
+      lastPriceSol: null,
+      lots: []
+    });
+  }
+  return positions.get(mint);
+}
+
+function touchTime(position, blockTime) {
+  if (blockTime == null) return;
+  position.firstBlockTime = position.firstBlockTime == null
+    ? blockTime
+    : Math.min(position.firstBlockTime, blockTime);
+  position.lastBlockTime = position.lastBlockTime == null
+    ? blockTime
+    : Math.max(position.lastBlockTime, blockTime);
+}
+
+function consumeLots(position, tokenAmount, blockTime, purpose) {
+  let remaining = tokenAmount;
+  let knownCost = 0;
+  let knownTokens = 0;
+  let unknownTokens = 0;
+  let totalMatched = 0;
+
+  while (remaining > EPSILON && position.lots.length > 0) {
+    const lot = position.lots[0];
+    const tokensFromLot = Math.min(remaining, lot.tokens);
+    const ratio = lot.tokens > EPSILON ? tokensFromLot / lot.tokens : 0;
+
+    if (lot.costSol == null) {
+      unknownTokens += tokensFromLot;
+    } else {
+      const cost = lot.costSol * ratio;
+      knownCost += cost;
+      knownTokens += tokensFromLot;
+      lot.costSol -= cost;
+    }
+
+    if (
+      lot.blockTime != null &&
+      blockTime != null &&
+      blockTime >= lot.blockTime
+    ) {
+      position.holdingSecondsWeighted +=
+        tokensFromLot * (blockTime - lot.blockTime);
+    }
+
+    lot.tokens -= tokensFromLot;
+    remaining -= tokensFromLot;
+    totalMatched += tokensFromLot;
+
+    if (lot.tokens <= EPSILON) position.lots.shift();
+  }
+
+  if (purpose === "SELL") {
+    position.matchedSoldTokens += totalMatched;
+    position.knownCostSoldTokens += knownTokens;
+    position.unknownCostSoldTokens += unknownTokens;
+    position.realizedCostBasis += knownCost;
+  }
+
+  if (purpose === "TRANSFER_OUT") {
+    position.transferredOutKnownCostSol += knownCost;
+  }
+
+  return {
+    remaining,
+    knownCost,
+    knownTokens,
+    unknownTokens,
+    totalMatched
+  };
+}
+
+export function buildPositions(trades, transfers = []) {
+  const positions = new Map();
+  const events = [];
+
+  for (const trade of trades || []) {
     if (
       !trade ||
       !trade.tokenMint ||
-      !Number.isFinite(trade.tokenAmount) ||
+      !finitePositive(trade.tokenAmount) ||
       !Number.isFinite(trade.solAmount) ||
-      trade.tokenAmount <= 0 ||
       trade.solAmount < 0 ||
       (trade.type !== "BUY" && trade.type !== "SELL")
     ) {
       continue;
     }
+    events.push({
+      kind: "TRADE",
+      blockTime: trade.blockTime ?? null,
+      eventIndex: Number.isInteger(trade.eventIndex) ? trade.eventIndex : 0,
+      data: trade
+    });
+  }
 
-    const mint = trade.tokenMint;
+  for (const transfer of transfers || []) {
+    if (
+      !transfer ||
+      !transfer.mint ||
+      !finitePositive(transfer.amount) ||
+      !["IN", "OUT"].includes(transfer.direction)
+    ) {
+      continue;
+    }
+    events.push({
+      kind: "TRANSFER",
+      blockTime: transfer.blockTime ?? null,
+      eventIndex: Number.isInteger(transfer.eventIndex) ? transfer.eventIndex : 0,
+      data: transfer
+    });
+  }
 
-    if (!positions.has(mint)) {
-      positions.set(mint, {
-        mint,
-        buys: 0,
-        sells: 0,
-        tradeCount: 0,
-        tokensBought: 0,
-        tokensSold: 0,
-        tokensRemaining: 0,
-        solSpent: 0,
-        solReceived: 0,
-        realizedPnl: 0,
-        realizedCostBasis: 0,
-        feesSol: 0,
-        matchedSoldTokens: 0,
-        unmatchedSoldTokens: 0,
-        unmatchedSellProceedsSol: 0,
-        holdingSecondsWeighted: 0,
-        firstBlockTime: trade.blockTime ?? null,
-        lastBlockTime: trade.blockTime ?? null,
-        lastPriceSol: null,
-        lots: []
-      });
+  events.sort((a, b) => {
+    const timeDiff = (a.blockTime ?? 0) - (b.blockTime ?? 0);
+    if (timeDiff !== 0) return timeDiff;
+    if (a.kind !== b.kind) return a.kind === "TRANSFER" ? -1 : 1;
+    return a.eventIndex - b.eventIndex;
+  });
+
+  for (const event of events) {
+    if (event.kind === "TRANSFER") {
+      const transfer = event.data;
+      const position = ensurePosition(
+        positions,
+        transfer.mint,
+        transfer.blockTime ?? null
+      );
+      touchTime(position, transfer.blockTime);
+      position.transferCount++;
+
+      if (transfer.direction === "IN") {
+        position.transferIns++;
+        position.tokensTransferredIn += transfer.amount;
+        position.lots.push({
+          tokens: transfer.amount,
+          costSol: null,
+          origin: "TRANSFER_IN",
+          signature: transfer.signature,
+          blockTime: transfer.blockTime
+        });
+      } else {
+        position.transferOuts++;
+        position.tokensTransferredOut += transfer.amount;
+        const consumed = consumeLots(
+          position,
+          transfer.amount,
+          transfer.blockTime,
+          "TRANSFER_OUT"
+        );
+        if (consumed.remaining > EPSILON) {
+          position.unmatchedTransferredOutTokens += consumed.remaining;
+        }
+      }
+      continue;
     }
 
-    const position = positions.get(mint);
+    const trade = event.data;
+    const position = ensurePosition(
+      positions,
+      trade.tokenMint,
+      trade.blockTime ?? null
+    );
+    touchTime(position, trade.blockTime);
     position.tradeCount++;
-    position.firstBlockTime =
-      position.firstBlockTime == null
-        ? trade.blockTime
-        : Math.min(position.firstBlockTime, trade.blockTime ?? position.firstBlockTime);
-    position.lastBlockTime =
-      position.lastBlockTime == null
-        ? trade.blockTime
-        : Math.max(position.lastBlockTime, trade.blockTime ?? position.lastBlockTime);
 
-    if (Number.isFinite(trade.estimatedPriceSol) && trade.estimatedPriceSol > 0) {
+    if (finitePositive(trade.estimatedPriceSol)) {
       position.lastPriceSol = trade.estimatedPriceSol;
     }
-
-    if (Number.isFinite(trade.feeSol) && trade.feeSol > 0) {
-      position.feesSol += trade.feeSol;
-    }
+    if (finitePositive(trade.feeSol)) position.feesSol += trade.feeSol;
 
     if (trade.type === "BUY") {
       position.buys++;
       position.tokensBought += trade.tokenAmount;
       position.solSpent += trade.solAmount;
-
       position.lots.push({
         tokens: trade.tokenAmount,
         costSol: trade.solAmount,
+        origin: "BUY",
         priceSol: trade.estimatedPriceSol,
         signature: trade.signature,
         blockTime: trade.blockTime
@@ -81,44 +226,31 @@ export function buildPositions(trades) {
     position.tokensSold += trade.tokenAmount;
     position.solReceived += trade.solAmount;
 
-    let remainingToSell = trade.tokenAmount;
-    let costOfSoldTokens = 0;
+    const consumed = consumeLots(
+      position,
+      trade.tokenAmount,
+      trade.blockTime,
+      "SELL"
+    );
 
-    while (remainingToSell > EPSILON && position.lots.length > 0) {
-      const lot = position.lots[0];
-      const tokensFromLot = Math.min(remainingToSell, lot.tokens);
-      const costPerToken = lot.costSol / lot.tokens;
-      const cost = tokensFromLot * costPerToken;
-
-      costOfSoldTokens += cost;
-      position.realizedCostBasis += cost;
-      position.matchedSoldTokens += tokensFromLot;
-
-      if (lot.blockTime != null && trade.blockTime != null && trade.blockTime >= lot.blockTime) {
-        position.holdingSecondsWeighted +=
-          tokensFromLot * (trade.blockTime - lot.blockTime);
-      }
-
-      lot.tokens -= tokensFromLot;
-      lot.costSol -= cost;
-      remainingToSell -= tokensFromLot;
-
-      if (lot.tokens <= EPSILON) {
-        position.lots.shift();
-      }
-    }
-
-    const matchedProceeds =
+    const knownProceeds =
       trade.tokenAmount > EPSILON
-        ? trade.solAmount * Math.min(1, (trade.tokenAmount - remainingToSell) / trade.tokenAmount)
+        ? trade.solAmount * (consumed.knownTokens / trade.tokenAmount)
         : 0;
+    const unknownProceeds =
+      trade.tokenAmount > EPSILON
+        ? trade.solAmount * (consumed.unknownTokens / trade.tokenAmount)
+        : 0;
+    const unmatchedProceeds = Math.max(
+      0,
+      trade.solAmount - knownProceeds - unknownProceeds
+    );
 
-    position.realizedPnl += matchedProceeds - costOfSoldTokens;
+    position.realizedPnl += knownProceeds - consumed.knownCost;
+    position.unknownCostSellProceedsSol += unknownProceeds;
 
-    if (remainingToSell > EPSILON) {
-      position.unmatchedSoldTokens += remainingToSell;
-
-      const unmatchedProceeds = Math.max(0, trade.solAmount - matchedProceeds);
+    if (consumed.remaining > EPSILON) {
+      position.unmatchedSoldTokens += consumed.remaining;
       position.unmatchedSellProceedsSol += unmatchedProceeds;
     }
   }
@@ -128,42 +260,56 @@ export function buildPositions(trades) {
       (total, lot) => total + lot.tokens,
       0
     );
-
     position.remainingCostSol = position.lots.reduce(
-      (total, lot) => total + lot.costSol,
+      (total, lot) => total + (lot.costSol == null ? 0 : lot.costSol),
       0
+    );
+    position.unknownCostRemainingTokens = position.lots.reduce(
+      (total, lot) => total + (lot.costSol == null ? lot.tokens : 0),
+      0
+    );
+    position.knownCostRemainingTokens = Math.max(
+      0,
+      position.tokensRemaining - position.unknownCostRemainingTokens
     );
 
     position.unrealizedValueSol =
-      position.tokensRemaining > EPSILON &&
-      Number.isFinite(position.lastPriceSol)
-        ? position.tokensRemaining * position.lastPriceSol
+      position.knownCostRemainingTokens > EPSILON &&
+      finitePositive(position.lastPriceSol)
+        ? position.knownCostRemainingTokens * position.lastPriceSol
         : 0;
-
+    position.unknownCostMarkedValueSol =
+      position.unknownCostRemainingTokens > EPSILON &&
+      finitePositive(position.lastPriceSol)
+        ? position.unknownCostRemainingTokens * position.lastPriceSol
+        : 0;
     position.unrealizedPnl =
       position.unrealizedValueSol - position.remainingCostSol;
-
-    position.totalPnl =
-      position.realizedPnl + position.unrealizedPnl;
-
+    position.totalPnl = position.realizedPnl + position.unrealizedPnl;
     position.realizedRoi =
       position.realizedCostBasis > EPSILON
         ? position.realizedPnl / position.realizedCostBasis
         : null;
-
     position.avgHoldingSeconds =
       position.matchedSoldTokens > EPSILON
         ? position.holdingSecondsWeighted / position.matchedSoldTokens
         : null;
-
-    position.open =
-      position.tokensRemaining > EPSILON;
+    position.open = position.tokensRemaining > EPSILON;
+    position.pnlComplete =
+      position.unknownCostSoldTokens <= EPSILON &&
+      position.unknownCostRemainingTokens <= EPSILON &&
+      position.unmatchedSoldTokens <= EPSILON;
 
     delete position.lots;
 
-    if (position.unmatchedSoldTokens <= EPSILON) {
-      delete position.unmatchedSoldTokens;
-      delete position.unmatchedSellProceedsSol;
+    for (const field of [
+      "unmatchedSoldTokens",
+      "unmatchedSellProceedsSol",
+      "unknownCostSoldTokens",
+      "unknownCostSellProceedsSol",
+      "unmatchedTransferredOutTokens"
+    ]) {
+      if (position[field] <= EPSILON) delete position[field];
     }
   }
 
