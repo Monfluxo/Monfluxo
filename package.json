@@ -10,6 +10,7 @@
     "reparse:wallet": "node --env-file=.env src/reparseWallet.js",
     "repair:wallet": "node --env-file=.env src/repairWallet.js",
     "regression:wallets": "node --env-file=.env src/regressionWallets.js",
+    "backfill:wallet": "node --env-file=.env src/backfillWorker.js",
     "debug:unmatched": "node --env-file=.env src/debugUnmatched.js",
     "inspect:buys": "node --env-file=.env src/inspectMissedBuys.js",
     "inspect:rewards": "node --env-file=.env src/inspectCreatorRewards.js",
