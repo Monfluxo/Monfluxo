@@ -1,6 +1,7 @@
 import {
   assertEventModelV2Schema,
   getSyncState,
+  upsertWallet,
   upsertSyncState
 } from "./db.js";
 import { syncWalletHistory } from "./sync.js";
@@ -60,6 +61,13 @@ function evaluate(metrics, sync) {
 
 async function forceDeepRegression(address) {
   const previous = await getSyncState(address);
+
+  // wallet_sync_state references wallets(address). New regression wallets must
+  // be registered before the sync cursor can be reset.
+  await upsertWallet({
+    address,
+    updated_at: new Date().toISOString()
+  });
 
   await upsertSyncState({
     wallet_address: address,
