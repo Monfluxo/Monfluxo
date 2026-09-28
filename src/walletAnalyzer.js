@@ -12,6 +12,7 @@ function mapTrade(row) {
   return {
     wallet: row.wallet_address,
     signature: row.signature,
+    slot: row.slot == null ? null : Number(row.slot),
     eventIndex: Number(row.event_index || 0),
     instructionIndex: row.instruction_index == null ? null : Number(row.instruction_index),
     blockTime: row.block_time ? Math.floor(new Date(row.block_time).getTime() / 1000) : null,
@@ -30,6 +31,7 @@ function mapTransfer(row) {
   return {
     wallet: row.wallet_address,
     signature: row.signature,
+    slot: row.slot == null ? null : Number(row.slot),
     eventIndex: Number(row.event_index || 0),
     instructionIndex: row.instruction_index == null ? null : Number(row.instruction_index),
     blockTime: row.block_time ? Math.floor(new Date(row.block_time).getTime() / 1000) : null,
@@ -48,6 +50,7 @@ function mapReward(row) {
   return {
     wallet: row.wallet_address,
     signature: row.signature,
+    slot: row.slot == null ? null : Number(row.slot),
     blockTime: row.block_time ? Math.floor(new Date(row.block_time).getTime() / 1000) : null,
     rewardType: row.reward_type,
     quoteMint: row.quote_mint,
@@ -100,6 +103,15 @@ function summarizePosition(position) {
   };
 }
 
+function eventOrder(a, b, indexField) {
+  if (a.slot != null && b.slot != null && a.slot !== b.slot) return a.slot - b.slot;
+  const time = (a.blockTime ?? 0) - (b.blockTime ?? 0);
+  if (time !== 0) return time;
+  const index = Number(a[indexField] || 0) - Number(b[indexField] || 0);
+  if (index !== 0) return index;
+  return String(a.signature || "").localeCompare(String(b.signature || ""));
+}
+
 export async function analyzeWallet(address, options = {}) {
   const mode = options.mode || "quick";
   const sync = await syncWalletHistory(address, { mode });
@@ -133,9 +145,9 @@ export async function analyzeWallet(address, options = {}) {
     if (rows.length < pageSize) break;
   }
 
-  trades.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0) || a.eventIndex - b.eventIndex);
-  transfers.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0) || a.eventIndex - b.eventIndex);
-  rewards.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0) || a.instructionIndex - b.instructionIndex);
+  trades.sort((a, b) => eventOrder(a, b, "eventIndex"));
+  transfers.sort((a, b) => eventOrder(a, b, "eventIndex"));
+  rewards.sort((a, b) => eventOrder(a, b, "instructionIndex"));
 
   const positions = buildPositions(trades, transfers, rewards);
   const positionList = [...positions.values()];
