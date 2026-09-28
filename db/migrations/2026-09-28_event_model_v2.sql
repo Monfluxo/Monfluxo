@@ -1,7 +1,16 @@
 -- MONFLUXO Event Model v2
-alter table wallet_trades add column if not exists event_index integer not null default 0;
-alter table wallet_trades add column if not exists instruction_index integer;
-alter table wallet_trades drop constraint if exists wallet_trades_wallet_address_signature_key;
+-- Supports multiple trades per Solana signature and persists non-trade token
+-- movements independently from swaps and creator rewards.
+
+alter table wallet_trades
+  add column if not exists event_index integer not null default 0;
+
+alter table wallet_trades
+  add column if not exists instruction_index integer;
+
+alter table wallet_trades
+  drop constraint if exists wallet_trades_wallet_address_signature_key;
+
 create unique index if not exists idx_wallet_trades_event_unique
   on wallet_trades(wallet_address, signature, event_index);
 
@@ -25,5 +34,47 @@ create table if not exists wallet_transfers (
   created_at timestamptz not null default now(),
   unique (wallet_address, signature, event_index)
 );
-create index if not exists idx_wallet_transfers_wallet_time on wallet_transfers(wallet_address, block_time desc);
-create index if not exists idx_wallet_transfers_mint_time on wallet_transfers(token_mint, block_time desc);
+
+-- Compatibility with the short-lived development schema that used mint/amount.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'wallet_transfers'
+      and column_name = 'mint'
+  ) and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'wallet_transfers'
+      and column_name = 'token_mint'
+  ) then
+    alter table wallet_transfers rename column mint to token_mint;
+  end if;
+
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'wallet_transfers'
+      and column_name = 'amount'
+  ) and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'wallet_transfers'
+      and column_name = 'token_amount'
+  ) then
+    alter table wallet_transfers rename column amount to token_amount;
+  end if;
+end $$;
+
+alter table wallet_transfers
+  add column if not exists instruction_index integer;
+
+create index if not exists idx_wallet_transfers_wallet_time
+  on wallet_transfers(wallet_address, block_time desc, event_index asc);
+
+create index if not exists idx_wallet_transfers_mint_time
+  on wallet_transfers(token_mint, block_time desc);
+
+-- Existing trade rows become event_index=0. A deep repair after this migration
+-- replaces all derived events for each signature using Event Model v2.
