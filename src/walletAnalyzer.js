@@ -1,11 +1,19 @@
 import { syncWalletHistory } from "./sync.js";
-import { getWalletTradePage, getWalletRewardsPage, getTradeSamples, upsertAnalysisCache } from "./db.js";
+import {
+  getWalletTradePage,
+  getWalletTransferPage,
+  getWalletRewardsPage,
+  getTradeSamples,
+  upsertAnalysisCache
+} from "./db.js";
 import { buildPositions } from "./positionEngine.js";
 
 function mapTrade(row) {
   return {
     wallet: row.wallet_address,
     signature: row.signature,
+    eventIndex: Number(row.event_index || 0),
+    instructionIndex: row.instruction_index == null ? null : Number(row.instruction_index),
     blockTime: row.block_time
       ? Math.floor(new Date(row.block_time).getTime() / 1000)
       : null,
@@ -20,6 +28,26 @@ function mapTrade(row) {
   };
 }
 
+function mapTransfer(row) {
+  return {
+    wallet: row.wallet_address,
+    signature: row.signature,
+    eventIndex: Number(row.event_index || 0),
+    instructionIndex: row.instruction_index == null ? null : Number(row.instruction_index),
+    blockTime: row.block_time
+      ? Math.floor(new Date(row.block_time).getTime() / 1000)
+      : null,
+    direction: row.direction,
+    mint: row.token_mint,
+    amount: Number(row.token_amount),
+    rawAmount: row.raw_amount,
+    decimals: Number(row.decimals || 0),
+    sourceAddress: row.source_address,
+    destinationAddress: row.destination_address,
+    parser: row.parser
+  };
+}
+
 function mapReward(row) {
   return {
     wallet: row.wallet_address,
@@ -30,9 +58,10 @@ function mapReward(row) {
     amount: Number(row.amount),
     decimals: Number(row.decimals || 0),
     creator: row.creator,
-    instructionIndex: Number(row.instruction_index),
+    instructionIndex: Number(row.instruction_index)
   };
 }
+
 function round(value, decimals = 6) {
   if (!Number.isFinite(value)) return null;
   const factor = 10 ** decimals;
@@ -45,17 +74,27 @@ function summarizePosition(position) {
     trades: position.tradeCount,
     buys: position.buys,
     sells: position.sells,
+    transferIns: position.transferIns,
+    transferOuts: position.transferOuts,
     tokensBought: position.tokensBought,
     tokensSold: position.tokensSold,
+    tokensTransferredIn: position.tokensTransferredIn,
+    tokensTransferredOut: position.tokensTransferredOut,
     tokensRemaining: position.tokensRemaining,
+    knownCostRemainingTokens: position.knownCostRemainingTokens,
+    unknownCostRemainingTokens: position.unknownCostRemainingTokens,
     solSpent: round(position.solSpent),
     solReceived: round(position.solReceived),
     realizedPnlSol: round(position.realizedPnl),
     realizedRoi: position.realizedRoi == null ? null : round(position.realizedRoi * 100, 2),
     unrealizedPnlSol: round(position.unrealizedPnl),
     totalPnlSol: round(position.totalPnl),
+    unknownCostSoldTokens: round(position.unknownCostSoldTokens || 0),
+    unknownCostSellProceedsSol: round(position.unknownCostSellProceedsSol || 0),
     unmatchedSoldTokens: round(position.unmatchedSoldTokens || 0),
     unmatchedSellProceedsSol: round(position.unmatchedSellProceedsSol || 0),
+    unmatchedTransferredOutTokens: round(position.unmatchedTransferredOutTokens || 0),
+    pnlComplete: position.pnlComplete,
     open: position.open,
     avgHoldingSeconds: round(position.avgHoldingSeconds, 1),
     lastPriceSol: round(position.lastPriceSol, 12)
@@ -72,6 +111,7 @@ export async function analyzeWallet(address, options = {}) {
     : Number(process.env.MAX_DEEP_TRADE_ROWS || 500000);
 
   const trades = [];
+  const transfers = [];
   const rewards = [];
 
   for (let offset = 0; offset < maxRows; offset += pageSize) {
@@ -81,6 +121,12 @@ export async function analyzeWallet(address, options = {}) {
     if (rows.length < pageSize) break;
   }
 
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const rows = await getWalletTransferPage(address, pageSize, offset);
+    if (!rows.length) break;
+    transfers.push(...rows.map(mapTransfer));
+    if (rows.length < pageSize) break;
+  }
 
   for (let offset = 0; offset < maxRows; offset += pageSize) {
     const rows = await getWalletRewardsPage(address, pageSize, offset);
@@ -89,9 +135,15 @@ export async function analyzeWallet(address, options = {}) {
     if (rows.length < pageSize) break;
   }
 
-  trades.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0));
+  trades.sort((a, b) =>
+    (a.blockTime ?? 0) - (b.blockTime ?? 0) || a.eventIndex - b.eventIndex
+  );
+  transfers.sort((a, b) =>
+    (a.blockTime ?? 0) - (b.blockTime ?? 0) || a.eventIndex - b.eventIndex
+  );
   rewards.sort((a, b) => (a.blockTime ?? 0) - (b.blockTime ?? 0));
-  const positions = buildPositions(trades);
+
+  const positions = buildPositions(trades, transfers);
   const positionList = [...positions.values()];
 
   let realizedPnl = 0;
@@ -104,19 +156,23 @@ export async function analyzeWallet(address, options = {}) {
   let creatorRewardCount = 0;
   let unmatchedSellProceedsSol = 0;
   let unmatchedSoldTokens = 0;
+  let unknownCostSellProceedsSol = 0;
+  let unknownCostSoldTokens = 0;
+  let unknownCostRemainingTokens = 0;
   let openPositions = 0;
   let closedPositions = 0;
   let winningPositions = 0;
   let losingPositions = 0;
+  let incompletePnlPositions = 0;
 
   const dexCounts = {};
   for (const reward of rewards) {
     creatorRewardCount++;
-    creatorRewardsByMint[reward.quoteMint] = (creatorRewardsByMint[reward.quoteMint] || 0) + reward.amount;
+    creatorRewardsByMint[reward.quoteMint] =
+      (creatorRewardsByMint[reward.quoteMint] || 0) + reward.amount;
   }
 
   const tradeTypeCounts = { BUY: 0, SELL: 0 };
-
   for (const trade of trades) {
     tradeTypeCounts[trade.type] = (tradeTypeCounts[trade.type] || 0) + 1;
     if (trade.type === "BUY") grossBuyVolumeSol += trade.solAmount;
@@ -125,38 +181,47 @@ export async function analyzeWallet(address, options = {}) {
     if (trade.dex) dexCounts[trade.dex] = (dexCounts[trade.dex] || 0) + 1;
   }
 
+  const transferCounts = { IN: 0, OUT: 0 };
+  const transferMints = new Set();
+  for (const transfer of transfers) {
+    transferCounts[transfer.direction] = (transferCounts[transfer.direction] || 0) + 1;
+    transferMints.add(transfer.mint);
+  }
+
   for (const position of positionList) {
     realizedPnl += position.realizedPnl;
     unrealizedPnl += position.unrealizedPnl;
     totalPnl += position.totalPnl;
     unmatchedSellProceedsSol += position.unmatchedSellProceedsSol || 0;
     unmatchedSoldTokens += position.unmatchedSoldTokens || 0;
+    unknownCostSellProceedsSol += position.unknownCostSellProceedsSol || 0;
+    unknownCostSoldTokens += position.unknownCostSoldTokens || 0;
+    unknownCostRemainingTokens += position.unknownCostRemainingTokens || 0;
 
+    if (!position.pnlComplete) incompletePnlPositions++;
     if (position.open) openPositions++;
     else closedPositions++;
-
     if (position.realizedPnl > 0) winningPositions++;
     if (position.realizedPnl < 0) losingPositions++;
   }
 
   const rankedPositions = [...positionList]
     .sort((a, b) => b.totalPnl - a.totalPnl);
-
   const bestTrades = rankedPositions.slice(0, 3).map(summarizePosition);
   const worstTrades = rankedPositions.slice(-3).reverse().map(summarizePosition);
-
   const matchedPositions = winningPositions + losingPositions;
   const openTokens = positionList.filter((position) => position.open);
-
-  const topPositions = rankedPositions
-    .slice(0, 10)
-    .map(summarizePosition);
+  const topPositions = rankedPositions.slice(0, 10).map(summarizePosition);
 
   const metrics = {
     wallet: address,
     mode,
     generatedAt: new Date().toISOString(),
     tradesAnalyzed: trades.length,
+    transfersAnalyzed: transfers.length,
+    transferInCount: transferCounts.IN,
+    transferOutCount: transferCounts.OUT,
+    transferTokenCount: transferMints.size,
     creatorRewardCount,
     creatorRewardsByMint,
     buyCount: tradeTypeCounts.BUY,
@@ -169,15 +234,29 @@ export async function analyzeWallet(address, options = {}) {
     realizedPnlSol: round(realizedPnl),
     unrealizedPnlSol: round(unrealizedPnl),
     totalPnlSol: round(totalPnl),
+    pnlComplete: incompletePnlPositions === 0,
+    incompletePnlPositions,
+    unknownCostSoldTokens: round(unknownCostSoldTokens),
+    unknownCostSellProceedsSol: round(unknownCostSellProceedsSol),
+    unknownCostRemainingTokens: round(unknownCostRemainingTokens),
     unmatchedSoldTokens: round(unmatchedSoldTokens),
     unmatchedSellProceedsSol: round(unmatchedSellProceedsSol),
     openPositions,
     closedPositions,
     winningPositions,
     losingPositions,
-    winRate: matchedPositions > 0 ? round((winningPositions / matchedPositions) * 100, 2) : null,
-    openExposureCostSol: round(openTokens.reduce((sum, position) => sum + position.remainingCostSol, 0)),
-    openMarkedValueSol: round(openTokens.reduce((sum, position) => sum + position.unrealizedValueSol, 0)),
+    winRate: matchedPositions > 0
+      ? round((winningPositions / matchedPositions) * 100, 2)
+      : null,
+    openExposureCostSol: round(
+      openTokens.reduce((sum, position) => sum + position.remainingCostSol, 0)
+    ),
+    openMarkedValueSol: round(
+      openTokens.reduce((sum, position) => sum + position.unrealizedValueSol, 0)
+    ),
+    unknownCostMarkedValueSol: round(
+      openTokens.reduce((sum, position) => sum + position.unknownCostMarkedValueSol, 0)
+    ),
     best: bestTrades[0] || null,
     worst: worstTrades[0] || null,
     bestTrades,
