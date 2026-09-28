@@ -14,10 +14,13 @@ function ensurePosition(positions, mint, blockTime = null) {
       transferIns: 0,
       transferOuts: 0,
       transferCount: 0,
+      rewardIns: 0,
+      rewardCount: 0,
       tokensBought: 0,
       tokensSold: 0,
       tokensTransferredIn: 0,
       tokensTransferredOut: 0,
+      tokensRewarded: 0,
       tokensRemaining: 0,
       solSpent: 0,
       solReceived: 0,
@@ -109,7 +112,7 @@ function consumeLots(position, tokenAmount, blockTime, purpose) {
   };
 }
 
-export function buildPositions(trades, transfers = []) {
+export function buildPositions(trades, transfers = [], rewards = []) {
   const positions = new Map();
   const events = [];
 
@@ -121,9 +124,8 @@ export function buildPositions(trades, transfers = []) {
       !Number.isFinite(trade.solAmount) ||
       trade.solAmount < 0 ||
       (trade.type !== "BUY" && trade.type !== "SELL")
-    ) {
-      continue;
-    }
+    ) continue;
+
     events.push({
       kind: "TRADE",
       blockTime: trade.blockTime ?? null,
@@ -138,9 +140,8 @@ export function buildPositions(trades, transfers = []) {
       !transfer.mint ||
       !finitePositive(transfer.amount) ||
       !["IN", "OUT"].includes(transfer.direction)
-    ) {
-      continue;
-    }
+    ) continue;
+
     events.push({
       kind: "TRANSFER",
       blockTime: transfer.blockTime ?? null,
@@ -149,21 +150,33 @@ export function buildPositions(trades, transfers = []) {
     });
   }
 
+  for (const reward of rewards || []) {
+    if (
+      !reward ||
+      !reward.quoteMint ||
+      !finitePositive(reward.amount)
+    ) continue;
+
+    events.push({
+      kind: "REWARD",
+      blockTime: reward.blockTime ?? null,
+      eventIndex: Number.isInteger(reward.instructionIndex) ? reward.instructionIndex : 0,
+      data: reward
+    });
+  }
+
+  const priority = { TRANSFER: 0, REWARD: 1, TRADE: 2 };
   events.sort((a, b) => {
     const timeDiff = (a.blockTime ?? 0) - (b.blockTime ?? 0);
     if (timeDiff !== 0) return timeDiff;
-    if (a.kind !== b.kind) return a.kind === "TRANSFER" ? -1 : 1;
+    if (a.kind !== b.kind) return priority[a.kind] - priority[b.kind];
     return a.eventIndex - b.eventIndex;
   });
 
   for (const event of events) {
     if (event.kind === "TRANSFER") {
       const transfer = event.data;
-      const position = ensurePosition(
-        positions,
-        transfer.mint,
-        transfer.blockTime ?? null
-      );
+      const position = ensurePosition(positions, transfer.mint, transfer.blockTime ?? null);
       touchTime(position, transfer.blockTime);
       position.transferCount++;
 
@@ -180,12 +193,7 @@ export function buildPositions(trades, transfers = []) {
       } else {
         position.transferOuts++;
         position.tokensTransferredOut += transfer.amount;
-        const consumed = consumeLots(
-          position,
-          transfer.amount,
-          transfer.blockTime,
-          "TRANSFER_OUT"
-        );
+        const consumed = consumeLots(position, transfer.amount, transfer.blockTime, "TRANSFER_OUT");
         if (consumed.remaining > EPSILON) {
           position.unmatchedTransferredOutTokens += consumed.remaining;
         }
@@ -193,18 +201,29 @@ export function buildPositions(trades, transfers = []) {
       continue;
     }
 
+    if (event.kind === "REWARD") {
+      const reward = event.data;
+      const position = ensurePosition(positions, reward.quoteMint, reward.blockTime ?? null);
+      touchTime(position, reward.blockTime);
+      position.rewardCount++;
+      position.rewardIns++;
+      position.tokensRewarded += reward.amount;
+      position.lots.push({
+        tokens: reward.amount,
+        costSol: null,
+        origin: "REWARD",
+        signature: reward.signature,
+        blockTime: reward.blockTime
+      });
+      continue;
+    }
+
     const trade = event.data;
-    const position = ensurePosition(
-      positions,
-      trade.tokenMint,
-      trade.blockTime ?? null
-    );
+    const position = ensurePosition(positions, trade.tokenMint, trade.blockTime ?? null);
     touchTime(position, trade.blockTime);
     position.tradeCount++;
 
-    if (finitePositive(trade.estimatedPriceSol)) {
-      position.lastPriceSol = trade.estimatedPriceSol;
-    }
+    if (finitePositive(trade.estimatedPriceSol)) position.lastPriceSol = trade.estimatedPriceSol;
     if (finitePositive(trade.feeSol)) position.feesSol += trade.feeSol;
 
     if (trade.type === "BUY") {
@@ -226,25 +245,14 @@ export function buildPositions(trades, transfers = []) {
     position.tokensSold += trade.tokenAmount;
     position.solReceived += trade.solAmount;
 
-    const consumed = consumeLots(
-      position,
-      trade.tokenAmount,
-      trade.blockTime,
-      "SELL"
-    );
-
-    const knownProceeds =
-      trade.tokenAmount > EPSILON
-        ? trade.solAmount * (consumed.knownTokens / trade.tokenAmount)
-        : 0;
-    const unknownProceeds =
-      trade.tokenAmount > EPSILON
-        ? trade.solAmount * (consumed.unknownTokens / trade.tokenAmount)
-        : 0;
-    const unmatchedProceeds = Math.max(
-      0,
-      trade.solAmount - knownProceeds - unknownProceeds
-    );
+    const consumed = consumeLots(position, trade.tokenAmount, trade.blockTime, "SELL");
+    const knownProceeds = trade.tokenAmount > EPSILON
+      ? trade.solAmount * (consumed.knownTokens / trade.tokenAmount)
+      : 0;
+    const unknownProceeds = trade.tokenAmount > EPSILON
+      ? trade.solAmount * (consumed.unknownTokens / trade.tokenAmount)
+      : 0;
+    const unmatchedProceeds = Math.max(0, trade.solAmount - knownProceeds - unknownProceeds);
 
     position.realizedPnl += knownProceeds - consumed.knownCost;
     position.unknownCostSellProceedsSol += unknownProceeds;
@@ -256,10 +264,7 @@ export function buildPositions(trades, transfers = []) {
   }
 
   for (const position of positions.values()) {
-    position.tokensRemaining = position.lots.reduce(
-      (total, lot) => total + lot.tokens,
-      0
-    );
+    position.tokensRemaining = position.lots.reduce((total, lot) => total + lot.tokens, 0);
     position.remainingCostSol = position.lots.reduce(
       (total, lot) => total + (lot.costSol == null ? 0 : lot.costSol),
       0
@@ -274,26 +279,21 @@ export function buildPositions(trades, transfers = []) {
     );
 
     position.unrealizedValueSol =
-      position.knownCostRemainingTokens > EPSILON &&
-      finitePositive(position.lastPriceSol)
+      position.knownCostRemainingTokens > EPSILON && finitePositive(position.lastPriceSol)
         ? position.knownCostRemainingTokens * position.lastPriceSol
         : 0;
     position.unknownCostMarkedValueSol =
-      position.unknownCostRemainingTokens > EPSILON &&
-      finitePositive(position.lastPriceSol)
+      position.unknownCostRemainingTokens > EPSILON && finitePositive(position.lastPriceSol)
         ? position.unknownCostRemainingTokens * position.lastPriceSol
         : 0;
-    position.unrealizedPnl =
-      position.unrealizedValueSol - position.remainingCostSol;
+    position.unrealizedPnl = position.unrealizedValueSol - position.remainingCostSol;
     position.totalPnl = position.realizedPnl + position.unrealizedPnl;
-    position.realizedRoi =
-      position.realizedCostBasis > EPSILON
-        ? position.realizedPnl / position.realizedCostBasis
-        : null;
-    position.avgHoldingSeconds =
-      position.matchedSoldTokens > EPSILON
-        ? position.holdingSecondsWeighted / position.matchedSoldTokens
-        : null;
+    position.realizedRoi = position.realizedCostBasis > EPSILON
+      ? position.realizedPnl / position.realizedCostBasis
+      : null;
+    position.avgHoldingSeconds = position.matchedSoldTokens > EPSILON
+      ? position.holdingSecondsWeighted / position.matchedSoldTokens
+      : null;
     position.open = position.tokensRemaining > EPSILON;
     position.pnlComplete =
       position.unknownCostSoldTokens <= EPSILON &&
