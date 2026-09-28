@@ -83,7 +83,16 @@ export async function upsertTransactions(rows) {
 
 export async function upsertTrades(rows) {
   if (!rows.length) return;
-  return request("wallet_trades?on_conflict=wallet_address,signature", {
+  return request("wallet_trades?on_conflict=wallet_address,signature,event_index", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(rows)
+  });
+}
+
+export async function upsertTransfers(rows) {
+  if (!rows.length) return;
+  return request("wallet_transfers?on_conflict=wallet_address,signature,event_index", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
     body: JSON.stringify(rows)
@@ -99,12 +108,37 @@ export async function upsertRewards(rows) {
   });
 }
 
+async function deleteBySignatures(table, address, signatures) {
+  if (!signatures.length) return;
+  const encoded = signatures.map(queryEncode).join(",");
+  return request(
+    `${table}?wallet_address=eq.${queryEncode(address)}&signature=in.(${encoded})`,
+    { method: "DELETE", headers: { Prefer: "return=minimal" } }
+  );
+}
+
+export async function replaceWalletEventsForSignatures(address, signatures) {
+  const unique = [...new Set(signatures.filter(Boolean))];
+  if (!unique.length) return;
+  await Promise.all([
+    deleteBySignatures("wallet_trades", address, unique),
+    deleteBySignatures("wallet_transfers", address, unique),
+    deleteBySignatures("wallet_rewards", address, unique)
+  ]);
+}
+
 export async function getWalletRewardsPage(address, limit = 1000, offset = 0) {
   const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
-  const rows = await request(
+  return request(
     `wallet_rewards?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
   );
-  return rows;
+}
+
+export async function getWalletTransferPage(address, limit = 1000, offset = 0) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
+  return request(
+    `wallet_transfers?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.asc,event_index.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+  );
 }
 
 export async function upsertAnalysisCache(row) {
@@ -134,14 +168,13 @@ export async function getRecentUsageCount(userId, action) {
 export async function getTradeSamples(limit = 10) {
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
   return request(
-    `wallet_trades?select=wallet_address,signature,parser,type,token_mint,block_time&order=block_time.desc&limit=${safeLimit}`
+    `wallet_trades?select=wallet_address,signature,event_index,parser,type,token_mint,block_time&order=block_time.desc&limit=${safeLimit}`
   );
 }
 
 export async function getWalletTradePage(address, limit = 1000, offset = 0) {
   const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
-  const rows = await request(
-    `wallet_trades?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+  return request(
+    `wallet_trades?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.asc,event_index.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
   );
-  return rows;
 }
