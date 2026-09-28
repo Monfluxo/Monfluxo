@@ -1,5 +1,5 @@
 import { getTransactionsForAddress } from "./helius.js";
-import { parseTransaction } from "./parser.js";
+import { parseTransaction } from "./parserV2.js";
 import {
   assertEventModelV2Schema,
   upsertWallet,
@@ -14,6 +14,39 @@ import {
 
 function signatureOf(tx) {
   return tx?.transaction?.signatures?.[0] || tx?.signature || null;
+}
+
+function accountKeyValue(key) {
+  return typeof key === "string" ? key : key?.pubkey || key?.address || null;
+}
+
+function allAccountKeys(tx) {
+  return [
+    ...(tx?.transaction?.message?.accountKeys || []),
+    ...(tx?.meta?.loadedAddresses?.writable || []),
+    ...(tx?.meta?.loadedAddresses?.readonly || [])
+  ];
+}
+
+function ownedTokenAccounts(tx, wallet) {
+  const keys = allAccountKeys(tx);
+  const result = [];
+  const seen = new Set();
+
+  for (const item of [
+    ...(tx?.meta?.preTokenBalances || []),
+    ...(tx?.meta?.postTokenBalances || [])
+  ]) {
+    if (item?.owner !== wallet || !item?.mint || item?.accountIndex == null) continue;
+    const account = accountKeyValue(keys[item.accountIndex]);
+    if (!account) continue;
+    const id = `${item.mint}:${account}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    result.push({ mint: item.mint, account });
+  }
+
+  return result;
 }
 
 function isoFromBlockTime(blockTime) {
@@ -97,6 +130,130 @@ function normalizedTransfer(wallet, transfer) {
   };
 }
 
+function inventoryRow(map, mint) {
+  if (!map.has(mint)) {
+    map.set(mint, { buys: 0, sells: 0, transferIn: 0, transferOut: 0 });
+  }
+  return map.get(mint);
+}
+
+function observeAnalysis(inventory, analysis) {
+  for (const trade of analysis?.trades || []) {
+    if (!trade?.tokenMint) continue;
+    const row = inventoryRow(inventory, trade.tokenMint);
+    const amount = Number(trade.tokenAmount || 0);
+    if (trade.type === "BUY") row.buys += amount;
+    if (trade.type === "SELL") row.sells += amount;
+  }
+
+  for (const transfer of analysis?.transfers || []) {
+    if (!transfer?.mint) continue;
+    const row = inventoryRow(inventory, transfer.mint);
+    const amount = Number(transfer.amount || 0);
+    if (transfer.direction === "IN") row.transferIn += amount;
+    if (transfer.direction === "OUT") row.transferOut += amount;
+  }
+}
+
+function unresolvedMints(inventory) {
+  const result = [];
+  for (const [mint, row] of inventory) {
+    const knownIn = row.buys + row.transferIn;
+    const knownOut = row.sells + row.transferOut;
+    const deficit = knownOut - knownIn;
+    if (deficit > 1e-9) result.push({ mint, deficit });
+  }
+  return result.sort((a, b) => b.deficit - a.deficit);
+}
+
+async function enrichFromTokenAccounts({
+  address,
+  tokenAccountsByMint,
+  inventory,
+  primarySignatures,
+  storeRaw
+}) {
+  if (process.env.DEEP_TOKEN_ACCOUNT_SCAN === "false") {
+    return {
+      deficitMintCount: unresolvedMints(inventory).length,
+      tokenAccountsScanned: 0,
+      tokenAccountPages: 0,
+      supplementalTransactionsStored: 0,
+      supplementalTransfersStored: 0
+    };
+  }
+
+  const deficits = unresolvedMints(inventory);
+  const targetMints = new Set(deficits.map((item) => item.mint));
+  const maxPages = Number(process.env.MAX_TOKEN_ACCOUNT_PAGES || 20);
+  const supplementalSeen = new Set();
+  let tokenAccountsScanned = 0;
+  let tokenAccountPages = 0;
+  let supplementalTransactionsStored = 0;
+  let supplementalTransfersStored = 0;
+
+  for (const mint of targetMints) {
+    const accounts = [...(tokenAccountsByMint.get(mint) || [])];
+
+    for (const account of accounts) {
+      tokenAccountsScanned++;
+      let paginationToken = null;
+      let pages = 0;
+
+      while (pages < maxPages) {
+        pages++;
+        tokenAccountPages++;
+        const result = await getTransactionsForAddress(account, paginationToken);
+        const transactions = result?.data || [];
+        if (!transactions.length) break;
+
+        const txRows = [];
+        const transferRows = [];
+
+        for (const tx of transactions) {
+          const signature = signatureOf(tx);
+          if (!signature) continue;
+          if (primarySignatures.has(signature) || supplementalSeen.has(signature)) continue;
+
+          const analysis = parseTransaction(tx, address);
+          const relevantTransfers = (analysis?.transfers || [])
+            .filter((transfer) => transfer?.mint === mint)
+            .filter((transfer) => transfer?.direction === "IN" || transfer?.direction === "OUT");
+
+          if (!relevantTransfers.length) continue;
+
+          supplementalSeen.add(signature);
+          txRows.push(normalizedTransaction(address, tx, analysis, storeRaw));
+          for (const transfer of relevantTransfers) {
+            transferRows.push(normalizedTransfer(address, transfer));
+          }
+          observeAnalysis(inventory, {
+            trades: [],
+            transfers: relevantTransfers
+          });
+        }
+
+        await upsertTransactions(txRows);
+        await upsertTransfers(transferRows);
+        supplementalTransactionsStored += txRows.length;
+        supplementalTransfersStored += transferRows.length;
+
+        paginationToken = result?.paginationToken || null;
+        if (!paginationToken) break;
+      }
+    }
+  }
+
+  return {
+    deficitMintCount: deficits.length,
+    unresolvedAfterTokenAccountScan: unresolvedMints(inventory).length,
+    tokenAccountsScanned,
+    tokenAccountPages,
+    supplementalTransactionsStored,
+    supplementalTransfersStored
+  };
+}
+
 export async function syncWalletHistory(address, options = {}) {
   const {
     mode = "incremental",
@@ -106,12 +263,9 @@ export async function syncWalletHistory(address, options = {}) {
     storeRaw = process.env.STORE_RAW_TRANSACTIONS !== "false"
   } = options;
 
-  // Fail before touching sync state or derived data when Supabase has not yet
-  // received the Event Model v2 migration.
   await assertEventModelV2Schema();
 
   const previous = await getSyncState(address);
-
   if (previous?.status === "syncing") {
     throw new Error("Wallet sync already in progress");
   }
@@ -136,6 +290,9 @@ export async function syncWalletHistory(address, options = {}) {
   let stoppedOnExisting = false;
   let newest = null;
   let oldest = null;
+  const inventory = new Map();
+  const tokenAccountsByMint = new Map();
+  const primarySignatures = new Set();
 
   try {
     while (page < maxPages) {
@@ -143,7 +300,6 @@ export async function syncWalletHistory(address, options = {}) {
 
       const result = await getTransactionsForAddress(address, paginationToken);
       const transactions = result?.data || [];
-
       if (!transactions.length) break;
 
       const txRows = [];
@@ -165,7 +321,14 @@ export async function syncWalletHistory(address, options = {}) {
           break;
         }
 
+        primarySignatures.add(signature);
+        for (const { mint, account } of ownedTokenAccounts(tx, address)) {
+          if (!tokenAccountsByMint.has(mint)) tokenAccountsByMint.set(mint, new Set());
+          tokenAccountsByMint.get(mint).add(account);
+        }
+
         const analysis = parseTransaction(tx, address);
+        observeAnalysis(inventory, analysis);
         reparsedSignatures.push(signature);
         txRows.push(normalizedTransaction(address, tx, analysis, storeRaw));
 
@@ -212,6 +375,17 @@ export async function syncWalletHistory(address, options = {}) {
       if (!paginationToken) break;
     }
 
+    let tokenAccountEnrichment = null;
+    if (mode === "deep") {
+      tokenAccountEnrichment = await enrichFromTokenAccounts({
+        address,
+        tokenAccountsByMint,
+        inventory,
+        primarySignatures,
+        storeRaw
+      });
+    }
+
     const now = new Date().toISOString();
     const syncState = {
       wallet_address: address,
@@ -254,6 +428,7 @@ export async function syncWalletHistory(address, options = {}) {
       tradesStored,
       transfersStored,
       rewardsStored,
+      tokenAccountEnrichment,
       stoppedOnExisting,
       status: "idle"
     };
