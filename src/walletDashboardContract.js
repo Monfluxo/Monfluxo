@@ -101,6 +101,20 @@ function normalizeTrade(trade) {
   };
 }
 
+function normalizeFunding(event) {
+  if (!event) return null;
+  return {
+    signature: event.signature || null,
+    blockTime: event.blockTime ?? null,
+    assetType: event.assetType === "SOL" ? "SOL" : "TOKEN",
+    assetId: event.assetId || null,
+    amount: n(event.amount),
+    sourceAddress: event.sourceAddress || null,
+    destinationAddress: event.destinationAddress || null,
+    parser: event.parser || null
+  };
+}
+
 export function buildWalletDashboardResponse(productResult) {
   const metrics = productResult?.metrics || {};
   const coverage = productResult?.coverage || {};
@@ -114,9 +128,12 @@ export function buildWalletDashboardResponse(productResult) {
   const worstTrades = Array.isArray(metrics.worstTrades)
     ? metrics.worstTrades.map(normalizeTrade).filter(Boolean)
     : [];
+  const fundingEvents = Array.isArray(metrics.fundingEvents)
+    ? metrics.fundingEvents.map(normalizeFunding).filter(Boolean)
+    : [];
 
   return {
-    schemaVersion: "wallet-intelligence.v2",
+    schemaVersion: "wallet-intelligence.v3",
     wallet: productResult?.wallet || null,
     status: productResult?.status || "indexing",
     metricsStatus: productResult?.metricsStatus || "partial",
@@ -160,6 +177,13 @@ export function buildWalletDashboardResponse(productResult) {
     trades: {
       best: bestTrades,
       worst: worstTrades
+    },
+
+    funding: {
+      count: n(metrics.fundingEventCount),
+      solTotal: n(metrics.solFundingTotal),
+      tokenCount: n(metrics.tokenFundingCount),
+      events: fundingEvents
     },
 
     activity: {
