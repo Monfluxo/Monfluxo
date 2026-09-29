@@ -129,22 +129,68 @@ function summarizePosition(position) {
   };
 }
 
-function summarizeRealizedTrade(trade) {
+function summarizeRealizedToken(result) {
   return {
-    tokenMint: trade.tokenMint,
-    signature: trade.signature || null,
-    blockTime: trade.blockTime ?? null,
-    dex: trade.dex || null,
-    tokensSold: round(trade.tokensSold),
-    purchasedTokensSold: round(trade.purchasedTokensSold || trade.tokensSold || 0),
-    externalTokensSoldInSameTx: round(trade.externalTokensSold || 0),
-    costSol: round(trade.costSol),
-    proceedsSol: round(trade.proceedsSol),
-    pnlSol: round(trade.pnlSol),
-    roiPct: round(trade.roiPct, 2),
-    mixedOrigins: trade.mixedOrigins === true,
-    pnlComplete: trade.pnlComplete === true
+    tokenMint: result.tokenMint,
+    signature: null,
+    blockTime: result.lastBlockTime ?? null,
+    dex: result.dexes.size === 1 ? [...result.dexes][0] : result.dexes.size > 1 ? "multiple" : null,
+    realizationCount: result.realizationCount,
+    tokensSold: round(result.purchasedTokensSold),
+    purchasedTokensSold: round(result.purchasedTokensSold),
+    externalTokensSoldInSameTx: round(result.externalTokensSoldInSameTx),
+    costSol: round(result.costSol),
+    proceedsSol: round(result.proceedsSol),
+    pnlSol: round(result.pnlSol),
+    roiPct: result.costSol > 0 ? round((result.pnlSol / result.costSol) * 100, 2) : null,
+    mixedOrigins: result.mixedOrigins,
+    pnlComplete: result.pnlComplete
   };
+}
+
+function aggregateRealizedByToken(realizedTrades) {
+  const byMint = new Map();
+
+  for (const trade of realizedTrades || []) {
+    if (!trade?.tokenMint) continue;
+    const current = byMint.get(trade.tokenMint) || {
+      tokenMint: trade.tokenMint,
+      realizationCount: 0,
+      purchasedTokensSold: 0,
+      externalTokensSoldInSameTx: 0,
+      costSol: 0,
+      proceedsSol: 0,
+      pnlSol: 0,
+      firstBlockTime: null,
+      lastBlockTime: null,
+      dexes: new Set(),
+      mixedOrigins: false,
+      pnlComplete: true
+    };
+
+    current.realizationCount += 1;
+    current.purchasedTokensSold += Number(trade.purchasedTokensSold || trade.tokensSold || 0);
+    current.externalTokensSoldInSameTx += Number(trade.externalTokensSold || 0);
+    current.costSol += Number(trade.costSol || 0);
+    current.proceedsSol += Number(trade.proceedsSol || 0);
+    current.pnlSol += Number(trade.pnlSol || 0);
+    current.mixedOrigins ||= trade.mixedOrigins === true;
+    current.pnlComplete &&= trade.pnlComplete === true;
+    if (trade.dex) current.dexes.add(trade.dex);
+
+    if (trade.blockTime != null) {
+      current.firstBlockTime = current.firstBlockTime == null
+        ? trade.blockTime
+        : Math.min(current.firstBlockTime, trade.blockTime);
+      current.lastBlockTime = current.lastBlockTime == null
+        ? trade.blockTime
+        : Math.max(current.lastBlockTime, trade.blockTime);
+    }
+
+    byMint.set(trade.tokenMint, current);
+  }
+
+  return [...byMint.values()];
 }
 
 function summarizeExternalSale(sale) {
@@ -303,19 +349,29 @@ export async function analyzeWallet(address, options = {}) {
     .flatMap((position) => position.realizedTrades || [])
     .filter((trade) => Number.isFinite(trade.pnlSol) && Number.isFinite(trade.costSol) && trade.costSol > 0);
 
+  const realizedTokenResults = aggregateRealizedByToken(realizedTrades);
+  const rankableTokenResults = realizedTokenResults.filter((result) =>
+    Number.isFinite(result.pnlSol) &&
+    Number.isFinite(result.costSol) &&
+    result.costSol >= MIN_RANKED_TRADE_COST_SOL
+  );
+
+  const bestTrades = rankableTokenResults
+    .filter((result) => result.pnlSol > 0)
+    .sort((a, b) => b.pnlSol - a.pnlSol)
+    .slice(0, 5)
+    .map(summarizeRealizedToken);
+
+  const worstTrades = rankableTokenResults
+    .filter((result) => result.pnlSol < 0)
+    .sort((a, b) => a.pnlSol - b.pnlSol)
+    .slice(0, 5)
+    .map(summarizeRealizedToken);
+
   const externalSales = positionList
     .flatMap((position) => position.externalSales || [])
     .filter((sale) => Number.isFinite(sale.proceedsSol) && sale.proceedsSol > 0)
     .sort((a, b) => b.proceedsSol - a.proceedsSol);
-
-  const rankableRealizedTrades = realizedTrades.filter((trade) =>
-    trade.pnlComplete === true &&
-    Number.isFinite(trade.roiPct) &&
-    trade.costSol >= MIN_RANKED_TRADE_COST_SOL
-  );
-  const rankedRealizedTrades = [...rankableRealizedTrades].sort((a, b) => b.pnlSol - a.pnlSol);
-  const bestTrades = rankedRealizedTrades.slice(0, 5).map(summarizeRealizedTrade);
-  const worstTrades = rankedRealizedTrades.slice(-5).reverse().map(summarizeRealizedTrade);
   const topExternalSales = externalSales.slice(0, 10).map(summarizeExternalSale);
 
   const rankedPositions = [...positionList].sort((a, b) => b.totalPnl - a.totalPnl);
@@ -334,9 +390,11 @@ export async function analyzeWallet(address, options = {}) {
     generatedAt: new Date().toISOString(),
     tradesAnalyzed: trades.length,
     realizedTradesAnalyzed: realizedTrades.length,
-    rankedRealizedTradesAnalyzed: rankableRealizedTrades.length,
-    rankingTradesExcluded: realizedTrades.length - rankableRealizedTrades.length,
+    realizedTokensAnalyzed: realizedTokenResults.length,
+    rankedRealizedTradesAnalyzed: rankableTokenResults.length,
+    rankingTradesExcluded: realizedTokenResults.length - rankableTokenResults.length,
     rankingMinCostSol: MIN_RANKED_TRADE_COST_SOL,
+    rankingUnit: "TOKEN_LIFETIME_NET",
     externalSalesAnalyzed: externalSales.length,
     externalTokensSold: round(externalTokensSold),
     externalTokensRemaining: round(externalTokensRemaining),
