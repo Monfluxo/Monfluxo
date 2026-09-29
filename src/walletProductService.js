@@ -2,6 +2,7 @@ import { analyzeWallet } from "./walletAnalyzer.js";
 import { getSyncState } from "./db.js";
 import { enqueueWalletIndexJob } from "./indexQueue.js";
 import { buildWalletDashboardResponse } from "./walletDashboardContract.js";
+import { getTokenMetadata } from "./helius.js";
 
 function coverageFromState(state) {
   const historyComplete = state?.history_complete === true;
@@ -16,6 +17,36 @@ function coverageFromState(state) {
     lastSyncedAt: state?.last_synced_at || null,
     backfillUpdatedAt: state?.backfill_updated_at || null
   };
+}
+
+async function enrichPositionMetadata(dashboard) {
+  const positions = [
+    ...(dashboard?.positions?.top || []),
+    dashboard?.positions?.best,
+    dashboard?.positions?.worst
+  ].filter(Boolean);
+
+  const mints = [...new Set(positions.map((position) => position.tokenMint).filter(Boolean))];
+  const metadataEntries = await Promise.all(
+    mints.map(async (mint) => {
+      try {
+        return [mint, await getTokenMetadata(mint)];
+      } catch (error) {
+        console.warn(`Unable to load metadata for ${mint}: ${error.message}`);
+        return [mint, null];
+      }
+    })
+  );
+
+  const metadataByMint = new Map(metadataEntries);
+
+  for (const position of positions) {
+    const metadata = metadataByMint.get(position.tokenMint);
+    position.tokenName = metadata?.name || null;
+    position.tokenSymbol = metadata?.symbol || null;
+  }
+
+  return dashboard;
 }
 
 export async function requestWalletIntelligence(address, options = {}) {
@@ -52,7 +83,8 @@ export async function requestWalletIntelligence(address, options = {}) {
 
 export async function requestWalletDashboard(address, options = {}) {
   const result = await requestWalletIntelligence(address, options);
-  return buildWalletDashboardResponse(result);
+  const dashboard = buildWalletDashboardResponse(result);
+  return enrichPositionMetadata(dashboard);
 }
 
 if (process.argv[1]?.endsWith("walletProductService.js")) {
