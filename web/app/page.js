@@ -2,228 +2,83 @@
 
 import { useEffect, useMemo, useState } from "react";
 import "./funding.css";
+import "./analysis-ui.css";
 
-function fmt(value, digits = 2) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(n);
-}
+function fmt(value,digits=2){const n=Number(value);if(!Number.isFinite(n))return"—";return new Intl.NumberFormat("en-US",{maximumFractionDigits:digits}).format(n)}
+function sol(value,digits=3){const n=Number(value);if(!Number.isFinite(n))return"—";const d=Math.abs(n)>0&&Math.abs(n)<0.01?6:digits;return `${fmt(n,d)} SOL`}
+function usd(value){const n=Number(value);if(!Number.isFinite(n))return"—";return new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:n<10?2:0}).format(n)}
+function pct(value){const n=Number(value);if(!Number.isFinite(n))return"—";return `${n>=0?"+":""}${fmt(n,2)}%`}
+function shorten(value,left=8,right=6){if(!value)return"—";if(value.length<=left+right+3)return value;return `${value.slice(0,left)}…${value.slice(-right)}`}
 
-function sol(value, digits = 3) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "—";
-  const adaptiveDigits = Math.abs(n) > 0 && Math.abs(n) < 0.01 ? 6 : digits;
-  return `${fmt(n, adaptiveDigits)} SOL`;
-}
+function BrandMark({compact=false}){return <div className={`brand-mark ${compact?"brand-mark-compact":""}`} aria-label="Monfluxo"><img src="/monfluxo-mark.svg" alt="" aria-hidden="true"/></div>}
+function FlowBackground(){return <div className="flow-stage" aria-hidden="true"><div className="flow-orb flow-orb-a"/><div className="flow-orb flow-orb-b"/><svg className="flow-svg flow-svg-a" viewBox="0 0 1600 900" preserveAspectRatio="none"><defs><linearGradient id="flowGradientA" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#14f1df" stopOpacity="0"/><stop offset="24%" stopColor="#14f1df" stopOpacity=".9"/><stop offset="72%" stopColor="#1688ff" stopOpacity=".9"/><stop offset="100%" stopColor="#315dff" stopOpacity="0"/></linearGradient></defs>{[0,1,2,3,4,5].map(i=><path key={i} d={`M-120 ${650+i*18} C 300 ${510-i*20}, 520 ${780-i*25}, 900 ${625-i*18} S 1350 ${470-i*14}, 1740 ${540-i*22}`} fill="none" stroke="url(#flowGradientA)" strokeWidth={i===2?3:1.3} opacity={.7-i*.06}/>)}</svg><svg className="flow-svg flow-svg-b" viewBox="0 0 1600 900" preserveAspectRatio="none">{[0,1,2,3].map(i=><path key={i} d={`M-100 ${270+i*34} C 330 ${100+i*20}, 650 ${500-i*12}, 980 ${300+i*26} S 1350 ${130+i*30}, 1700 ${250+i*22}`} fill="none" stroke="rgba(26,142,255,.28)" strokeWidth="1"/>)}</svg><div className="flow-particles">{Array.from({length:14}).map((_,i)=><span key={i} style={{"--i":i,left:`${(i*79)%100}%`,bottom:`${8+(i%5)*7}%`}}/>)}</div></div>}
+function StatusPill({tone="neutral",children}){return <span className={`pill pill-${tone}`}>{children}</span>}
+function MetricCard({label,value,hint,tone="default"}){return <div className={`metric-card metric-${tone}`}><div className="metric-label">{label}</div><div className="metric-value">{value}</div>{hint?<div className="metric-hint">{hint}</div>:null}</div>}
+function Section({title,subtitle,children,action,className=""}){return <section className={`panel ${className}`}><div className="panel-header"><div><h2>{title}</h2>{subtitle?<p>{subtitle}</p>:null}</div>{action}</div>{children}</section>}
+function tokenTitle(item){return item?.tokenName||item?.tokenSymbol||shorten(item?.tokenMint||item?.assetId)}
+function TokenCell({item}){const initials=(item?.tokenSymbol||item?.tokenName||item?.tokenMint||item?.assetId||"?").replace(/[^a-z0-9]/gi,"").slice(0,2).toUpperCase()||"?";return <div className="token-cell">{item?.tokenImage?<img className="token-avatar token-avatar-img" src={item.tokenImage} alt=""/>:<div className="token-avatar">{initials}</div>}<div className="token-copy"><div className="token-primary">{tokenTitle(item)}{item?.tokenSymbol&&item?.tokenName?<span>${item.tokenSymbol}</span>:null}</div><div className="token-mint mono">{shorten(item?.tokenMint||item?.assetId)}</div></div></div>}
 
-function usd(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: n < 10 ? 2 : 0
-  }).format(n);
-}
+function TradeTable({trades=[],emptyText,legacy=false}){if(legacy)return <div className="legacy-ranking">Rebuilding net token ranking. Legacy per-sale results are intentionally hidden.</div>;if(!trades.length)return <div className="empty">{emptyText}</div>;return <div className="table-wrap compact-table"><table><thead><tr><th>Token</th><th>Costo total</th><th>Venta total</th><th>PnL neto</th><th>ROI neto</th></tr></thead><tbody>{trades.map(trade=><tr key={trade.tokenMint}><td><TokenCell item={trade}/></td><td>{sol(trade.costSol)}</td><td>{sol(trade.proceedsSol)}</td><td className={Number(trade.pnlSol)>=0?"positive":"negative"}>{sol(trade.pnlSol)}</td><td className={Number(trade.roiPct)>=0?"positive":"negative"}>{pct(trade.roiPct)}</td></tr>)}</tbody></table></div>}
+function PositionTable({positions=[]}){if(!positions.length)return <div className="empty">No inventory data available.</div>;return <div className="table-wrap"><table><thead><tr><th>Token</th><th>Estado</th><th>Trades</th><th>Costo</th><th>Venta</th><th>Utilidad</th><th>Cobertura</th></tr></thead><tbody>{positions.map(position=><tr key={`${position.tokenMint}-${position.state}`}><td><TokenCell item={position}/></td><td>{position.state==="provisional"?<StatusPill tone="warning">provisional</StatusPill>:<StatusPill tone={position.state==="open"?"warning":"neutral"}>{position.state==="open"?"abierta":"cerrada"}</StatusPill>}</td><td>{fmt(position.trades,0)}</td><td>{sol(position.solSpent)}</td><td>{sol(position.solReceived)}</td><td className={Number(position.totalPnlSol)>=0?"positive":"negative"}>{sol(position.totalPnlSol)}</td><td><StatusPill tone={position.pnlComplete?"success":"warning"}>{position.pnlComplete?"completa":"parcial"}</StatusPill></td></tr>)}</tbody></table></div>}
+function IncomingTable({events=[],onAnalyze}){const rows=events.slice(0,10);if(!rows.length)return <div className="empty">No incoming transfer or reward above the $5 relevance threshold has been priced yet.</div>;return <div className="table-wrap funding-table"><table><thead><tr><th>Tipo</th><th>Activo</th><th>Monto</th><th>Valor est.</th><th>Origen</th><th>Fecha</th><th>Tx</th><th></th></tr></thead><tbody>{rows.map((event,index)=>{const tokenItem=event.assetType==="TOKEN"?{...event,tokenMint:event.assetId}:event;const isReward=event.classification==="CREATOR_REWARD";const canAnalyze=!isReward&&Boolean(event.sourceAddress);return <tr key={`${event.signature}-${event.assetId}-${index}`}><td><StatusPill tone={isReward?"success":"neutral"}>{isReward?"creator reward":"transfer"}</StatusPill></td><td>{event.assetType==="SOL"?<div className="funding-asset sol-asset"><span className="funding-dot">◎</span><div><strong>SOL</strong><small>Native Solana</small></div></div>:<TokenCell item={tokenItem}/>}</td><td className="funding-amount">{event.assetType==="SOL"?sol(event.amount,6):fmt(event.amount,6)}</td><td>{usd(event.estimatedUsd)}</td><td>{canAnalyze?<button className="wallet-link mono" onClick={()=>onAnalyze(event.sourceAddress)}>{shorten(event.sourceAddress,7,6)}</button>:<span className="muted">{isReward?"protocol / claim":"unknown"}</span>}</td><td>{event.blockTime?new Date(event.blockTime*1000).toLocaleDateString():"—"}</td><td>{event.signature?<a className="tx-link" href={`https://solscan.io/tx/${event.signature}`} target="_blank" rel="noreferrer">View ↗</a>:"—"}</td><td>{canAnalyze?<button className="analyze-source" onClick={()=>onAnalyze(event.sourceAddress)}>Analyze · 1 credit</button>:null}</td></tr>})}</tbody></table></div>}
+function relationshipTone(c){return c==="very_high"||c==="high"?"success":c==="medium"?"warning":"neutral"}
+function relationshipEvidence(item){const s=item?.signals||{},parts=[];if(s.directFunding)parts.push(s.directFundingSol>0?`${fmt(s.directFundingSol,4)} SOL funding`:"direct token funding");if(s.bidirectionalFunding)parts.push("bidirectional flow");if(Number(s.tokenOverlapPct)>=20)parts.push(`${fmt(s.tokenOverlapPct)}% token overlap`);if(Number(s.synchronizedTrades)>=3)parts.push(`${fmt(s.synchronizedTrades,0)} synchronized trades`);if(Number(s.sharedFundingSources)>0)parts.push(`${fmt(s.sharedFundingSources,0)} shared funders`);return parts.slice(0,4)}
+function ClusterTable({cluster,onAnalyze}){const rows=cluster?.relationships||[];if(!rows.length)return <div className="empty">No source-wallet relationships can be scored yet.</div>;return <div className="table-wrap cluster-table"><table><thead><tr><th>Wallet</th><th>Relationship</th><th>Confidence</th><th>Evidence</th><th></th></tr></thead><tbody>{rows.map(item=><tr key={item.wallet}><td><button className="wallet-link mono" onClick={()=>onAnalyze(item.wallet)}>{shorten(item.wallet,9,7)}</button><div className="cluster-data-state">{item.analyzed?"Behavioral data available":"Funding-only until analyzed"}</div></td><td><div className="cluster-score"><strong>{fmt(item.score,0)}</strong><span>/100</span></div></td><td><StatusPill tone={relationshipTone(item.confidence)}>{String(item.confidence||"low").replace("_"," ")}</StatusPill></td><td><div className="evidence-list">{relationshipEvidence(item).map(label=><span key={label}>{label}</span>)}</div></td><td><button className="analyze-source" onClick={()=>onAnalyze(item.wallet)}>Analyze · 1 credit</button></td></tr>)}</tbody></table></div>}
 
-function pct(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "—";
-  return `${n >= 0 ? "+" : ""}${fmt(n, 2)}%`;
-}
+const LOAD_STAGES=[
+  [12,"Validating Solana address","Checking input and initializing request"],
+  [26,"Loading indexed history","Reading cached transactions and wallet state"],
+  [43,"Classifying on-chain activity","Separating swaps, transfers and rewards"],
+  [61,"Reconstructing FIFO inventory","Matching purchased lots against token sales"],
+  [76,"Calculating net token PnL","Aggregating all buy/sell cycles by mint"],
+  [89,"Resolving metadata & funding","Loading token names, prices and source wallets"],
+  [96,"Building cluster intelligence","Scoring related-wallet signals"]
+];
 
-function shorten(value, left = 8, right = 6) {
-  if (!value) return "—";
-  if (value.length <= left + right + 3) return value;
-  return `${value.slice(0, left)}…${value.slice(-right)}`;
-}
+export default function Home(){
+  const [wallet,setWallet]=useState("");const [query,setQuery]=useState("");const [data,setData]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState("");const [loadStage,setLoadStage]=useState(0);
 
-function BrandMark({ compact = false }) {
-  return (
-    <div className={`brand-mark ${compact ? "brand-mark-compact" : ""}`} aria-label="Monfluxo">
-      <img src="/monfluxo-mark.svg" alt="" aria-hidden="true" />
-    </div>
-  );
-}
+  useEffect(()=>{if(!loading){setLoadStage(0);return}const timer=setInterval(()=>setLoadStage(s=>Math.min(s+1,LOAD_STAGES.length-1)),850);return()=>clearInterval(timer)},[loading]);
 
-function FlowBackground() {
-  return (
-    <div className="flow-stage" aria-hidden="true">
-      <div className="flow-orb flow-orb-a" />
-      <div className="flow-orb flow-orb-b" />
-      <svg className="flow-svg flow-svg-a" viewBox="0 0 1600 900" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="flowGradientA" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#14f1df" stopOpacity="0" />
-            <stop offset="24%" stopColor="#14f1df" stopOpacity=".9" />
-            <stop offset="72%" stopColor="#1688ff" stopOpacity=".9" />
-            <stop offset="100%" stopColor="#315dff" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {[0,1,2,3,4,5].map((i)=><path key={i} d={`M-120 ${650+i*18} C 300 ${510-i*20}, 520 ${780-i*25}, 900 ${625-i*18} S 1350 ${470-i*14}, 1740 ${540-i*22}`} fill="none" stroke="url(#flowGradientA)" strokeWidth={i===2?3:1.3} opacity={.7-i*.06} />)}
-      </svg>
-      <svg className="flow-svg flow-svg-b" viewBox="0 0 1600 900" preserveAspectRatio="none">{[0,1,2,3].map((i)=><path key={i} d={`M-100 ${270+i*34} C 330 ${100+i*20}, 650 ${500-i*12}, 980 ${300+i*26} S 1350 ${130+i*30}, 1700 ${250+i*22}`} fill="none" stroke="rgba(26,142,255,.28)" strokeWidth="1" />)}</svg>
-      <div className="flow-particles">{Array.from({length:14}).map((_,i)=><span key={i} style={{"--i":i,left:`${(i*79)%100}%`,bottom:`${8+(i%5)*7}%`}} />)}</div>
-    </div>
-  );
-}
-
-function StatusPill({ tone="neutral", children }) {
-  return <span className={`pill pill-${tone}`}>{children}</span>;
-}
-
-function MetricCard({ label, value, hint, tone="default" }) {
-  return <div className={`metric-card metric-${tone}`}><div className="metric-label">{label}</div><div className="metric-value">{value}</div>{hint?<div className="metric-hint">{hint}</div>:null}</div>;
-}
-
-function Section({ title, subtitle, children, action, className="" }) {
-  return <section className={`panel ${className}`}><div className="panel-header"><div><h2>{title}</h2>{subtitle?<p>{subtitle}</p>:null}</div>{action}</div>{children}</section>;
-}
-
-function tokenTitle(item) {
-  return item?.tokenName || item?.tokenSymbol || shorten(item?.tokenMint || item?.assetId);
-}
-
-function TokenCell({ item }) {
-  const initials=(item?.tokenSymbol||item?.tokenName||item?.tokenMint||item?.assetId||"?").replace(/[^a-z0-9]/gi,"").slice(0,2).toUpperCase()||"?";
-  return <div className="token-cell">{item?.tokenImage?<img className="token-avatar token-avatar-img" src={item.tokenImage} alt=""/>:<div className="token-avatar">{initials}</div>}<div className="token-copy"><div className="token-primary">{tokenTitle(item)}{item?.tokenSymbol&&item?.tokenName?<span>${item.tokenSymbol}</span>:null}</div><div className="token-mint mono">{shorten(item?.tokenMint||item?.assetId)}</div></div></div>;
-}
-
-function TradeTable({ trades=[], emptyText }) {
-  if (!trades.length) return <div className="empty">{emptyText}</div>;
-  return <div className="table-wrap compact-table"><table><thead><tr><th>Token</th><th>Costo</th><th>Venta</th><th>PnL</th><th>ROI</th></tr></thead><tbody>{trades.map((trade)=><tr key={`${trade.signature}-${trade.tokenMint}`}><td><TokenCell item={trade}/></td><td>{sol(trade.costSol)}</td><td>{sol(trade.proceedsSol)}</td><td className={Number(trade.pnlSol)>=0?"positive":"negative"}>{sol(trade.pnlSol)}</td><td className={Number(trade.roiPct)>=0?"positive":"negative"}>{pct(trade.roiPct)}</td></tr>)}</tbody></table></div>;
-}
-
-function PositionTable({ positions=[] }) {
-  if (!positions.length) return <div className="empty">No inventory data available.</div>;
-  return <div className="table-wrap"><table><thead><tr><th>Token</th><th>Estado</th><th>Trades</th><th>Costo</th><th>Venta</th><th>Utilidad</th><th>Cobertura</th></tr></thead><tbody>{positions.map((position)=><tr key={`${position.tokenMint}-${position.state}`}><td><TokenCell item={position}/></td><td>{position.state==="provisional"?<StatusPill tone="warning">provisional</StatusPill>:<StatusPill tone={position.state==="open"?"warning":"neutral"}>{position.state==="open"?"abierta":"cerrada"}</StatusPill>}</td><td>{fmt(position.trades,0)}</td><td>{sol(position.solSpent)}</td><td>{sol(position.solReceived)}</td><td className={Number(position.totalPnlSol)>=0?"positive":"negative"}>{sol(position.totalPnlSol)}</td><td><StatusPill tone={position.pnlComplete?"success":"warning"}>{position.pnlComplete?"completa":"parcial"}</StatusPill></td></tr>)}</tbody></table></div>;
-}
-
-function IncomingTable({ events=[], onAnalyze }) {
-  const rows=events.slice(0,10);
-  if (!rows.length) return <div className="empty">No incoming transfer or reward above the $5 relevance threshold has been priced yet.</div>;
-  return <div className="table-wrap funding-table"><table><thead><tr><th>Tipo</th><th>Activo</th><th>Monto</th><th>Valor est.</th><th>Origen</th><th>Fecha</th><th>Tx</th><th></th></tr></thead><tbody>{rows.map((event,index)=>{
-    const tokenItem=event.assetType==="TOKEN"?{...event,tokenMint:event.assetId}:event;
-    const isReward=event.classification==="CREATOR_REWARD";
-    const canAnalyze=!isReward&&Boolean(event.sourceAddress);
-    return <tr key={`${event.signature}-${event.assetId}-${index}`}>
-      <td><StatusPill tone={isReward?"success":"neutral"}>{isReward?"creator reward":"transfer"}</StatusPill></td>
-      <td>{event.assetType==="SOL"?<div className="funding-asset sol-asset"><span className="funding-dot">◎</span><div><strong>SOL</strong><small>Native Solana</small></div></div>:<TokenCell item={tokenItem}/>}</td>
-      <td className="funding-amount">{event.assetType==="SOL"?sol(event.amount,6):fmt(event.amount,6)}</td>
-      <td>{usd(event.estimatedUsd)}</td>
-      <td>{canAnalyze?<button className="wallet-link mono" onClick={()=>onAnalyze(event.sourceAddress)}>{shorten(event.sourceAddress,7,6)}</button>:<span className="muted">{isReward?"protocol / claim":"unknown"}</span>}</td>
-      <td>{event.blockTime?new Date(event.blockTime*1000).toLocaleDateString():"—"}</td>
-      <td>{event.signature?<a className="tx-link" href={`https://solscan.io/tx/${event.signature}`} target="_blank" rel="noreferrer">View ↗</a>:"—"}</td>
-      <td>{canAnalyze?<button className="analyze-source" onClick={()=>onAnalyze(event.sourceAddress)}>Analyze · 1 credit</button>:null}</td>
-    </tr>;
-  })}</tbody></table></div>;
-}
-
-function relationshipTone(confidence) {
-  return confidence==="very_high"||confidence==="high"?"success":confidence==="medium"?"warning":"neutral";
-}
-
-function relationshipEvidence(item) {
-  const s=item?.signals||{}; const parts=[];
-  if(s.directFunding) parts.push(s.directFundingSol>0?`${fmt(s.directFundingSol,4)} SOL funding`:"direct token funding");
-  if(s.bidirectionalFunding) parts.push("bidirectional flow");
-  if(Number(s.tokenOverlapPct)>=20) parts.push(`${fmt(s.tokenOverlapPct)}% token overlap`);
-  if(Number(s.synchronizedTrades)>=3) parts.push(`${fmt(s.synchronizedTrades,0)} synchronized trades`);
-  if(Number(s.sharedFundingSources)>0) parts.push(`${fmt(s.sharedFundingSources,0)} shared funder${Number(s.sharedFundingSources)===1?"":"s"}`);
-  if(Number(s.tradeSizeSimilarityPct)>=50) parts.push(`${fmt(s.tradeSizeSimilarityPct)}% size similarity`);
-  return parts.slice(0,4);
-}
-
-function ClusterTable({ cluster, onAnalyze }) {
-  const rows=cluster?.relationships||[];
-  if(!rows.length) return <div className="empty">No source-wallet relationships can be scored yet.</div>;
-  return <div className="table-wrap cluster-table"><table><thead><tr><th>Wallet</th><th>Relationship</th><th>Confidence</th><th>Evidence</th><th></th></tr></thead><tbody>{rows.map((item)=><tr key={item.wallet}><td><button className="wallet-link mono" onClick={()=>onAnalyze(item.wallet)}>{shorten(item.wallet,9,7)}</button><div className="cluster-data-state">{item.analyzed?"Behavioral data available":"Funding-only until analyzed"}</div></td><td><div className="cluster-score"><strong>{fmt(item.score,0)}</strong><span>/100</span></div></td><td><StatusPill tone={relationshipTone(item.confidence)}>{String(item.confidence||"low").replace("_"," ")}</StatusPill></td><td><div className="evidence-list">{relationshipEvidence(item).map((label)=><span key={label}>{label}</span>)}</div></td><td><button className="analyze-source" onClick={()=>onAnalyze(item.wallet)}>Analyze · 1 credit</button></td></tr>)}</tbody></table></div>;
-}
-
-export default function Home() {
-  const [wallet,setWallet]=useState("");
-  const [query,setQuery]=useState("");
-  const [data,setData]=useState(null);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState("");
-
-  async function loadWallet(address,silent=false){
-    if(!address)return;
-    if(!silent)setLoading(true);
-    setError("");
-    try{
-      const response=await fetch(`/api/wallet/${encodeURIComponent(address)}`,{cache:"no-store"});
-      const payload=await response.json();
-      if(!response.ok)throw new Error(payload?.message||"Unable to load wallet intelligence.");
-      setData(payload); setWallet(address); setQuery(address);
-    }catch(err){setError(err.message||"Unable to load wallet intelligence.");}
-    finally{if(!silent)setLoading(false);}
-  }
-
-  function analyzeRelatedWallet(address){
-    if(!address||address===wallet)return;
-    window.scrollTo({top:0,behavior:"smooth"});
-    loadWallet(address);
-  }
-
-  useEffect(()=>{
-    if(!data?.indexing?.refreshRecommended||!wallet)return;
-    const timer=setInterval(()=>loadWallet(wallet,true),12000);
-    return()=>clearInterval(timer);
-  },[data?.indexing?.refreshRecommended,wallet]);
-
+  async function loadWallet(address,silent=false){if(!address)return;if(!silent){setLoading(true);setLoadStage(0);setData(null)}setError("");try{const response=await fetch(`/api/wallet/${encodeURIComponent(address)}`,{cache:"no-store"});const payload=await response.json();if(!response.ok)throw new Error(payload?.message||"Unable to load wallet intelligence.");setData(payload);setWallet(address);setQuery(address)}catch(err){setError(err.message||"Unable to load wallet intelligence.")}finally{if(!silent)setLoading(false)}}
+  function analyzeRelatedWallet(address){if(!address||address===wallet)return;window.scrollTo({top:0,behavior:"smooth"});loadWallet(address)}
+  function clearQuery(){setQuery("");setError("");}
+  useEffect(()=>{if(!data?.indexing?.refreshRecommended||!wallet)return;const timer=setInterval(()=>loadWallet(wallet,true),12000);return()=>clearInterval(timer)},[data?.indexing?.refreshRecommended,wallet]);
   const confidenceTone=useMemo(()=>data?.confidence?.level==="high"?"success":data?.confidence?.level==="review"?"danger":"warning",[data?.confidence?.level]);
-  function submit(event){event.preventDefault();loadWallet(query.trim());}
+  function submit(event){event.preventDefault();loadWallet(query.trim())}
 
-  const overview=data?.overview||{};
-  const performance=data?.performance||{};
-  const coverage=data?.coverage||{};
-  const accounting=data?.accounting||{};
-  const activity=data?.activity||{};
-  const rewards=data?.rewards||{};
-  const incoming=data?.incoming||{};
-  const cluster=data?.cluster||{};
+  const overview=data?.overview||{},performance=data?.performance||{},coverage=data?.coverage||{},accounting=data?.accounting||{},activity=data?.activity||{},rewards=data?.rewards||{},incoming=data?.incoming||{},cluster=data?.cluster||{};
   const closedHint=coverage.historyComplete?`${fmt(overview.closedPositions,0)} closed positions`:"Position states provisional";
   const clusterTone=cluster.status==="potential_cluster"||cluster.status==="relationship_detected"?"warning":"neutral";
-  const indexState=data?.indexing?.state||coverage.status||"queued";
-  const indexTone=coverage.historyComplete?"success":indexState==="stalled"?"danger":"warning";
-  const indexLabel=coverage.historyComplete?"ready":indexState==="active"?`indexing · ${fmt(data?.indexing?.pagesScanned||coverage.pagesScanned,0)} pages`:indexState;
-  const lastProgress=data?.indexing?.lastProgressAt?new Date(data.indexing.lastProgressAt).toLocaleTimeString():"—";
+  const indexState=data?.indexing?.state||coverage.status||"queued";const indexTone=coverage.historyComplete?"success":indexState==="stalled"?"danger":"warning";const indexLabel=coverage.historyComplete?"ready":indexState==="active"?`indexing · ${fmt(data?.indexing?.pagesScanned||coverage.pagesScanned,0)} pages`:indexState;const lastProgress=data?.indexing?.lastProgressAt?new Date(data.indexing.lastProgressAt).toLocaleTimeString():"—";
+  const stage=LOAD_STAGES[loadStage]||LOAD_STAGES[0];const rankingLegacy=data&&data.trades?.rankingUnit!=="TOKEN_LIFETIME_NET";
 
-  return <main className="app-shell"><FlowBackground />
+  return <main className="app-shell"><FlowBackground/>
     <header className="topbar glass-surface"><div className="brand-row"><BrandMark compact/><div><div className="brand-name">MONFLUXO</div><div className="brand-subtitle">Wallet Intelligence</div></div></div><div className="topbar-right"><StatusPill>Solana</StatusPill>{data?<StatusPill tone={indexTone}>{indexLabel}</StatusPill>:null}</div></header>
     <div className="content">
-      <section className="hero glass-surface hero-surface"><div className="hero-brand-watermark"><BrandMark/></div><div className="eyebrow">ON-CHAIN INTELLIGENCE</div><h1>Understand the wallet.<br/><span>Follow the flow.</span></h1><p>Deterministic Solana wallet reconstruction with funding provenance, cluster intelligence, PnL confidence and explicit historical coverage.</p><form className="search" onSubmit={submit}><input aria-label="Solana wallet address" value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Paste a Solana wallet address"/><button type="submit" disabled={loading||!query.trim()}>{loading?"Analyzing…":"Analyze wallet"}</button></form>{error?<div className="error-box">{error}</div>:null}</section>
+      <section className="hero glass-surface hero-surface"><div className="hero-brand-watermark"><BrandMark/></div><div className="eyebrow">ON-CHAIN INTELLIGENCE</div><h1>Understand the wallet.<br/><span>Follow the flow.</span></h1><p>Deterministic Solana wallet reconstruction with funding provenance, cluster intelligence, PnL confidence and explicit historical coverage.</p>
+        <form className="search" onSubmit={submit}><div className="search-field"><input aria-label="Solana wallet address" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Paste a Solana wallet address"/>{query?<button type="button" className="clear-query" onClick={clearQuery} aria-label="Clear wallet">×</button>:null}</div><button type="submit" disabled={loading||!query.trim()}>{loading?"Analyzing…":"Analyze wallet"}</button></form>
+        {loading?<div className="analysis-progress"><div className="analysis-progress-head"><div className="analysis-progress-label">{stage[1]}</div><div className="analysis-progress-percent">{stage[0]}%</div></div><div className="analysis-progress-track"><div className="analysis-progress-bar" style={{width:`${stage[0]}%`}}/></div><div className="analysis-progress-detail">{stage[2]}</div></div>:null}
+        {error?<div className="error-box">{error}</div>:null}
+      </section>
 
       {data?<>
+        {!coverage.historyComplete?<div className="index-progress-strip"><StatusPill tone={indexTone}>{indexState}</StatusPill><span><strong>{fmt(coverage.pagesScanned,0)} pages</strong> indexed · last checkpoint {lastProgress}. Metrics remain provisional until history is complete.</span></div>:null}
         <div className="wallet-strip glass-surface"><div><div className="strip-label">Wallet</div><div className="wallet-address mono">{data.wallet}</div></div><div className="strip-pills"><StatusPill tone={data.metricsStatus==="final"?"success":"warning"}>{data.metricsStatus} metrics</StatusPill><StatusPill tone={confidenceTone}>{data.confidence?.label}</StatusPill></div></div>
-        <div className="metric-grid"><MetricCard label="Known-cost PnL" value={sol(performance.totalPnlSol)} hint={performance.pnlCoverage?.complete?"Complete cost basis":"Partial cost-basis coverage"} tone={Number(performance.totalPnlSol)>=0?"positive":"negative"}/><MetricCard label="Total volume" value={sol(overview.totalVolumeSol)} hint={`${fmt(overview.tradesAnalyzed,0)} analyzed trades`}/><MetricCard label="Win rate" value={overview.winRatePct==null?"—":`${fmt(overview.winRatePct)}%`} hint={closedHint}/><MetricCard label="Fees" value={sol(overview.feesSol,4)} hint="Observed trading fees"/></div>
+        <div className="metric-grid"><MetricCard label="Known-cost PnL" value={sol(performance.totalPnlSol)} hint={performance.pnlCoverage?.complete?"Complete purchased-token accounting":"Partial purchased-token coverage"} tone={Number(performance.totalPnlSol)>=0?"positive":"negative"}/><MetricCard label="Total volume" value={sol(overview.totalVolumeSol)} hint={`${fmt(overview.tradesAnalyzed,0)} analyzed trades`}/><MetricCard label="Win rate" value={overview.winRatePct==null?"—":`${fmt(overview.winRatePct)}%`} hint={closedHint}/><MetricCard label="Fees" value={sol(overview.feesSol,4)} hint="Observed trading fees"/></div>
 
         <div className="trade-grid">
-          <Section title="Top 5 trades" subtitle={`Best realized FIFO outcomes. Complete cost basis only; micro-cost trades below ${sol(data.trades?.minRankedCostSol||0.005,3)} are excluded.`} action={<StatusPill tone="success">best</StatusPill>}><TradeTable trades={data.trades?.best||[]} emptyText="No quality-qualified realized trades yet."/></Section>
-          <Section title="Bottom 5 trades" subtitle="Worst realized FIFO outcomes using the same ranking-quality rules." action={<StatusPill tone="danger">worst</StatusPill>}><TradeTable trades={data.trades?.worst||[]} emptyText="No quality-qualified realized trades yet."/></Section>
+          <Section title="Top 5 tokens" subtitle="Best net lifetime results by token. All buy/sell cycles for the same mint are combined." action={<StatusPill tone="success">net by token</StatusPill>}><div className="ranking-method">Method: <strong>Σ purchased-token proceeds − Σ FIFO purchased cost</strong>. External tokens/rewards excluded.</div><TradeTable trades={data.trades?.best||[]} legacy={rankingLegacy} emptyText="No quality-qualified profitable tokens yet."/></Section>
+          <Section title="Bottom 5 tokens" subtitle="Worst net lifetime results by token using the same aggregation." action={<StatusPill tone="danger">net by token</StatusPill>}><div className="ranking-method">A mint can appear only once and cannot exist in both rankings.</div><TradeTable trades={data.trades?.worst||[]} legacy={rankingLegacy} emptyText="No quality-qualified losing tokens yet."/></Section>
         </div>
 
         <Section title="Inventory & positions" subtitle={coverage.historyComplete?"Final reconstructed token inventory.":"Provisional inventory while historical indexing is still running."} action={<StatusPill tone={coverage.historyComplete?"success":"warning"}>{coverage.historyComplete?"final states":"provisional states"}</StatusPill>}><PositionTable positions={data.positions?.top||[]}/></Section>
-
-        <Section title="Relevant incoming flows" subtitle="Secondary view of meaningful external inflows. Dust and unpriced transfers are hidden." className="secondary-panel" action={<StatusPill tone="neutral">≥ ${fmt(incoming.minUsd||5,0)} USD</StatusPill>}>
-          <div className="funding-credit-note">Transfers and creator rewards are classified separately. USD value uses the currently available token price as a relevance filter; <strong>{fmt(incoming.hiddenBelowThresholdOrUnpriced||0,0)}</strong> low-value or unpriced events are hidden.</div>
-          <IncomingTable events={incoming.events||[]} onAnalyze={analyzeRelatedWallet}/>
-        </Section>
-
-        <Section title="Cluster Intelligence" subtitle="Probable on-chain coordination or common control — never identity attribution." className="secondary-panel" action={<div className="funding-summary"><StatusPill tone={clusterTone}>{cluster.status==="potential_cluster"?"potential cluster":cluster.status==="relationship_detected"?"relationship detected":"no strong cluster yet"}</StatusPill><StatusPill tone="neutral">strongest {fmt(cluster.strongestScore||0,0)}/100</StatusPill></div>}>
-          <div className="cluster-overview"><div><strong>{fmt(cluster.candidateWallets||0,0)}</strong><span>funding candidates</span></div><div><strong>{fmt(cluster.analyzedCandidateWallets||0,0)}</strong><span>with behavioral data</span></div><div><strong>{fmt(cluster.likelyRelatedWallets||0,0)}</strong><span>likely related ≥45</span></div></div>
-          <ClusterTable cluster={cluster} onAnalyze={analyzeRelatedWallet}/>
-        </Section>
-
-        <div className="two-col">
-          <Section title="Historical coverage" subtitle="Live state of the background indexer."><div className="coverage-status"><StatusPill tone={indexTone}>{coverage.historyComplete?"complete":indexState}</StatusPill><div className="coverage-copy">{coverage.historyComplete?"Full indexed history is available for this wallet.":indexState==="active"?`Indexer is moving normally. ${fmt(coverage.pagesScanned,0)} pages have been processed so far.`:indexState==="stalled"?"No recent checkpoint was observed. Check the worker terminal.":"The wallet is queued for additional historical indexing."}</div></div><div className="detail-grid"><div><span>Pages scanned</span><strong>{fmt(coverage.pagesScanned,0)}</strong></div><div><span>Last progress</span><strong>{lastProgress}</strong></div><div><span>Oldest indexed</span><strong>{coverage.oldestIndexedAt?new Date(coverage.oldestIndexedAt).toLocaleDateString():"—"}</strong></div><div><span>Background job</span><strong>{data.indexing?.job?.status||(coverage.historyComplete?"not needed":"pending")}</strong></div></div></Section>
-          <Section title="Accounting confidence" subtitle="Reconstruction quality, not investment quality."><div className="confidence-block"><StatusPill tone={confidenceTone}>{data.confidence?.label}</StatusPill><p>{data.confidence?.reason}</p></div><div className="detail-grid"><div><span>Unmatched proceeds</span><strong>{sol(accounting.unmatchedSellProceedsSol,6)}</strong></div><div><span>Unknown-cost proceeds</span><strong>{sol(accounting.unknownCostSellProceedsSol)}</strong></div><div><span>Low-confidence excluded</span><strong>{fmt(activity.lowConfidenceTradesExcluded,0)}</strong></div><div><span>Excluded volume</span><strong>{sol(activity.lowConfidenceVolumeSolExcluded,5)}</strong></div></div></Section>
-        </div>
-
-        <div className="two-col"><Section title="Activity" subtitle="Wallet behavior across trades and transfers."><div className="detail-grid"><div><span>Buys</span><strong>{fmt(overview.buyCount,0)}</strong></div><div><span>Sells</span><strong>{fmt(overview.sellCount,0)}</strong></div><div><span>Transfer in</span><strong>{fmt(activity.transferInCount,0)}</strong></div><div><span>Transfer out</span><strong>{fmt(activity.transferOutCount,0)}</strong></div><div><span>Unique tokens</span><strong>{fmt(overview.uniqueTokens,0)}</strong></div><div><span>Ranked realized trades</span><strong>{fmt(data.trades?.rankedCount,0)}</strong></div></div></Section><Section title="Creator rewards" subtitle="Creator-fee claims kept separate from trading PnL and labeled separately in incoming flows."><div className="reward-number">{fmt(rewards.creatorRewardCount,0)}</div><div className="reward-label">reward events identified</div><div className="reward-foot">Token amount observed: <strong>{fmt(rewards.creatorRewardTokenAmount,6)}</strong></div></Section></div>
+        <Section title="Relevant incoming flows" subtitle="Secondary view of meaningful external inflows. Dust and unpriced transfers are hidden." className="secondary-panel" action={<StatusPill tone="neutral">≥ ${fmt(incoming.minUsd||5,0)} USD</StatusPill>}><div className="funding-credit-note">Transfers and creator rewards are classified separately. <strong>{fmt(incoming.hiddenBelowThresholdOrUnpriced||0,0)}</strong> low-value or unpriced events are hidden.</div><IncomingTable events={incoming.events||[]} onAnalyze={analyzeRelatedWallet}/></Section>
+        <Section title="Cluster Intelligence" subtitle="Probable on-chain coordination or common control — never identity attribution." className="secondary-panel" action={<div className="funding-summary"><StatusPill tone={clusterTone}>{cluster.status==="potential_cluster"?"potential cluster":cluster.status==="relationship_detected"?"relationship detected":"no strong cluster yet"}</StatusPill><StatusPill tone="neutral">strongest {fmt(cluster.strongestScore||0,0)}/100</StatusPill></div>}><div className="cluster-overview"><div><strong>{fmt(cluster.candidateWallets||0,0)}</strong><span>funding candidates</span></div><div><strong>{fmt(cluster.analyzedCandidateWallets||0,0)}</strong><span>with behavioral data</span></div><div><strong>{fmt(cluster.likelyRelatedWallets||0,0)}</strong><span>likely related ≥45</span></div></div><ClusterTable cluster={cluster} onAnalyze={analyzeRelatedWallet}/></Section>
+        <div className="two-col"><Section title="Historical coverage" subtitle="Live state of the background indexer."><div className="coverage-status"><StatusPill tone={indexTone}>{coverage.historyComplete?"complete":indexState}</StatusPill><div className="coverage-copy">{coverage.historyComplete?"Full indexed history is available for this wallet.":indexState==="active"?`Indexer is moving normally. ${fmt(coverage.pagesScanned,0)} pages processed.`:indexState==="stalled"?"No recent checkpoint was observed. Check the worker terminal.":"Wallet queued for additional historical indexing."}</div></div><div className="detail-grid"><div><span>Pages scanned</span><strong>{fmt(coverage.pagesScanned,0)}</strong></div><div><span>Last progress</span><strong>{lastProgress}</strong></div><div><span>Oldest indexed</span><strong>{coverage.oldestIndexedAt?new Date(coverage.oldestIndexedAt).toLocaleDateString():"—"}</strong></div><div><span>Background job</span><strong>{data.indexing?.job?.status||(coverage.historyComplete?"not needed":"pending")}</strong></div></div></Section><Section title="Accounting confidence" subtitle="Reconstruction quality, not investment quality."><div className="confidence-block"><StatusPill tone={confidenceTone}>{data.confidence?.label}</StatusPill><p>{data.confidence?.reason}</p></div><div className="detail-grid"><div><span>Unmatched proceeds</span><strong>{sol(accounting.unmatchedSellProceedsSol,6)}</strong></div><div><span>External-token proceeds</span><strong>{sol(accounting.externalTokenSaleProceedsSol)}</strong></div><div><span>Low-confidence excluded</span><strong>{fmt(activity.lowConfidenceTradesExcluded,0)}</strong></div><div><span>Excluded volume</span><strong>{sol(activity.lowConfidenceVolumeSolExcluded,5)}</strong></div></div></Section></div>
+        <div className="two-col"><Section title="Activity" subtitle="Wallet behavior across trades and transfers."><div className="detail-grid"><div><span>Buys</span><strong>{fmt(overview.buyCount,0)}</strong></div><div><span>Sells</span><strong>{fmt(overview.sellCount,0)}</strong></div><div><span>Transfer in</span><strong>{fmt(activity.transferInCount,0)}</strong></div><div><span>Transfer out</span><strong>{fmt(activity.transferOutCount,0)}</strong></div><div><span>Unique tokens</span><strong>{fmt(overview.uniqueTokens,0)}</strong></div><div><span>Ranked tokens</span><strong>{fmt(data.trades?.rankedCount,0)}</strong></div></div></Section><Section title="Creator rewards" subtitle="Creator-fee claims kept separate from trading PnL."><div className="reward-number">{fmt(rewards.creatorRewardCount,0)}</div><div className="reward-label">reward events identified</div><div className="reward-foot">Token amount observed: <strong>{fmt(rewards.creatorRewardTokenAmount,6)}</strong></div></Section></div>
         <footer><div>MONFLUXO · Don&apos;t just look at the blockchain. Understand it.</div><div className="mono">schema {data.schemaVersion}</div></footer>
       </>:<div className="loading-panel">{loading?"Building wallet intelligence…":"Paste a wallet to begin."}</div>}
     </div>
-  </main>;
+  </main>
 }
