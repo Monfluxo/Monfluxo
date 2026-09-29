@@ -3,6 +3,7 @@ import {
   getWalletTradePage,
   getWalletTransferPage,
   getWalletRewardsPage,
+  getWalletFundingPage,
   getTradeSamples,
   upsertAnalysisCache
 } from "./db.js";
@@ -58,6 +59,23 @@ function mapReward(row) {
     decimals: Number(row.decimals || 0),
     creator: row.creator,
     instructionIndex: Number(row.instruction_index)
+  };
+}
+
+function mapFunding(row) {
+  return {
+    signature: row.signature,
+    slot: row.slot == null ? null : Number(row.slot),
+    eventIndex: Number(row.event_index || 0),
+    blockTime: row.block_time ? Math.floor(new Date(row.block_time).getTime() / 1000) : null,
+    assetType: row.asset_type,
+    assetId: row.asset_id,
+    amount: Number(row.amount),
+    rawAmount: row.raw_amount,
+    decimals: Number(row.decimals || 0),
+    sourceAddress: row.source_address || null,
+    destinationAddress: row.destination_address || null,
+    parser: row.parser || null
   };
 }
 
@@ -170,6 +188,8 @@ export async function analyzeWallet(address, options = {}) {
     if (rows.length < pageSize) break;
   }
 
+  const fundingEvents = (await getWalletFundingPage(address, 100, 0)).map(mapFunding);
+
   trades.sort((a, b) => eventOrder(a, b, "eventIndex"));
   transfers.sort((a, b) => eventOrder(a, b, "eventIndex"));
   rewards.sort((a, b) => eventOrder(a, b, "instructionIndex"));
@@ -248,6 +268,10 @@ export async function analyzeWallet(address, options = {}) {
   const matchedPositions = winningPositions + losingPositions;
   const openTokens = positionList.filter((position) => position.open);
   const topPositions = rankedPositions.slice(0, 10).map(summarizePosition);
+  const solFundingTotal = fundingEvents
+    .filter((event) => event.assetType === "SOL")
+    .reduce((sum, event) => sum + event.amount, 0);
+  const tokenFundingCount = fundingEvents.filter((event) => event.assetType === "TOKEN").length;
 
   const metrics = {
     wallet: address,
@@ -261,6 +285,10 @@ export async function analyzeWallet(address, options = {}) {
     transferInCount: transferCounts.IN,
     transferOutCount: transferCounts.OUT,
     transferTokenCount: transferMints.size,
+    fundingEventCount: fundingEvents.length,
+    solFundingTotal: round(solFundingTotal),
+    tokenFundingCount,
+    fundingEvents,
     creatorRewardCount,
     creatorRewardTokenAmount: round(creatorRewardTokenAmount),
     creatorRewardsByMint,
