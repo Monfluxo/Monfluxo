@@ -10,6 +10,7 @@ const clusterCache = new Map();
 const CLUSTER_CACHE_MS = Number(process.env.CLUSTER_CACHE_MS || 60_000);
 const INDEX_ACTIVE_WINDOW_MS = Number(process.env.INDEX_ACTIVE_WINDOW_MS || 90_000);
 const MIN_INCOMING_USD = Number(process.env.MIN_INCOMING_USD || 5);
+const MIN_RANKED_TRADE_COST_SOL = Number(process.env.MIN_RANKED_TRADE_COST_SOL || 0.005);
 
 function coverageFromState(state) {
   const historyComplete = state?.history_complete === true;
@@ -31,6 +32,32 @@ function coverageFromState(state) {
     lastSyncedAt: state?.last_synced_at || null,
     backfillUpdatedAt: state?.backfill_updated_at || null,
     progressAgeMs
+  };
+}
+
+function sanitizeMetrics(metrics) {
+  if (!metrics || typeof metrics !== "object") return metrics;
+  const cleanRanked = (items) => (Array.isArray(items) ? items : []).filter((trade) =>
+    trade?.pnlComplete === true &&
+    Number.isFinite(Number(trade?.costSol)) &&
+    Number(trade.costSol) >= MIN_RANKED_TRADE_COST_SOL &&
+    Number.isFinite(Number(trade?.roiPct))
+  );
+
+  const originalBest = Array.isArray(metrics.bestTrades) ? metrics.bestTrades.length : 0;
+  const originalWorst = Array.isArray(metrics.worstTrades) ? metrics.worstTrades.length : 0;
+  const bestTrades = cleanRanked(metrics.bestTrades).slice(0, 5);
+  const worstTrades = cleanRanked(metrics.worstTrades).slice(0, 5);
+
+  return {
+    ...metrics,
+    bestTrades,
+    worstTrades,
+    rankingMinCostSol: Number(metrics.rankingMinCostSol || MIN_RANKED_TRADE_COST_SOL),
+    rankingTradesExcluded: Number(metrics.rankingTradesExcluded || 0) +
+      (originalBest - bestTrades.length) +
+      (originalWorst - worstTrades.length),
+    rankedRealizedTradesAnalyzed: Number(metrics.rankedRealizedTradesAnalyzed || metrics.realizedTradesAnalyzed || 0)
   };
 }
 
@@ -147,16 +174,16 @@ async function clusterForWallet(address) {
 async function metricsForRequest(address, stateBefore) {
   if (stateBefore?.status === "syncing") {
     const cached = await getAnalysisCache(address);
-    if (cached?.metrics) return cached.metrics;
+    if (cached?.metrics) return sanitizeMetrics(cached.metrics);
   }
 
   try {
     const analysis = await analyzeWallet(address, { mode: "quick" });
-    return analysis.metrics;
+    return sanitizeMetrics(analysis.metrics);
   } catch (error) {
     if (!String(error?.message || "").includes("already in progress")) throw error;
     const cached = await getAnalysisCache(address);
-    if (cached?.metrics) return cached.metrics;
+    if (cached?.metrics) return sanitizeMetrics(cached.metrics);
     throw error;
   }
 }
