@@ -39,10 +39,16 @@ function ensurePosition(positions, mint, blockTime = null) {
       tokensTransferredOut: 0,
       tokensRewarded: 0,
       tokensRemaining: 0,
+      purchasedTokensRemaining: 0,
+      externalTokensRemaining: 0,
       solSpent: 0,
       solReceived: 0,
       realizedPnl: 0,
       realizedCostBasis: 0,
+      externalSaleProceedsSol: 0,
+      externalTokensSold: 0,
+      transferTokensSold: 0,
+      rewardTokensSold: 0,
       feesSol: 0,
       matchedSoldTokens: 0,
       knownCostSoldTokens: 0,
@@ -57,7 +63,8 @@ function ensurePosition(positions, mint, blockTime = null) {
       lastBlockTime: blockTime,
       lastPriceSol: null,
       lots: [],
-      realizedTrades: []
+      realizedTrades: [],
+      externalSales: []
     });
   }
   return positions.get(mint);
@@ -75,9 +82,11 @@ function touchTime(position, blockTime) {
 
 function consumeLots(position, tokenAmount, blockTime, purpose) {
   let remaining = tokenAmount;
-  let knownCost = 0;
-  let knownTokens = 0;
-  let unknownTokens = 0;
+  let purchasedCost = 0;
+  let purchasedTokens = 0;
+  let transferTokens = 0;
+  let rewardTokens = 0;
+  let otherExternalTokens = 0;
   let totalMatched = 0;
 
   while (remaining > EPSILON && position.lots.length > 0) {
@@ -85,13 +94,17 @@ function consumeLots(position, tokenAmount, blockTime, purpose) {
     const tokensFromLot = Math.min(remaining, lot.tokens);
     const ratio = lot.tokens > EPSILON ? tokensFromLot / lot.tokens : 0;
 
-    if (lot.costSol == null) {
-      unknownTokens += tokensFromLot;
-    } else {
+    if (lot.origin === "BUY" && lot.costSol != null) {
       const cost = lot.costSol * ratio;
-      knownCost += cost;
-      knownTokens += tokensFromLot;
+      purchasedCost += cost;
+      purchasedTokens += tokensFromLot;
       lot.costSol -= cost;
+    } else if (lot.origin === "TRANSFER_IN") {
+      transferTokens += tokensFromLot;
+    } else if (lot.origin === "REWARD") {
+      rewardTokens += tokensFromLot;
+    } else {
+      otherExternalTokens += tokensFromLot;
     }
 
     if (lot.blockTime != null && blockTime != null && blockTime >= lot.blockTime) {
@@ -105,18 +118,32 @@ function consumeLots(position, tokenAmount, blockTime, purpose) {
     if (lot.tokens <= EPSILON) position.lots.shift();
   }
 
+  const externalTokens = transferTokens + rewardTokens + otherExternalTokens;
+
   if (purpose === "SELL") {
     position.matchedSoldTokens += totalMatched;
-    position.knownCostSoldTokens += knownTokens;
-    position.unknownCostSoldTokens += unknownTokens;
-    position.realizedCostBasis += knownCost;
+    position.knownCostSoldTokens += purchasedTokens;
+    position.unknownCostSoldTokens += externalTokens;
+    position.realizedCostBasis += purchasedCost;
+    position.externalTokensSold += externalTokens;
+    position.transferTokensSold += transferTokens;
+    position.rewardTokensSold += rewardTokens;
   }
 
   if (purpose === "TRANSFER_OUT") {
-    position.transferredOutKnownCostSol += knownCost;
+    position.transferredOutKnownCostSol += purchasedCost;
   }
 
-  return { remaining, knownCost, knownTokens, unknownTokens, totalMatched };
+  return {
+    remaining,
+    purchasedCost,
+    purchasedTokens,
+    transferTokens,
+    rewardTokens,
+    otherExternalTokens,
+    externalTokens,
+    totalMatched
+  };
 }
 
 function eventSlot(value) {
@@ -227,26 +254,54 @@ export function buildPositions(trades, transfers = [], rewards = []) {
     position.solReceived += trade.solAmount;
 
     const consumed = consumeLots(position, trade.tokenAmount, trade.blockTime, "SELL");
-    const knownProceeds = trade.tokenAmount > EPSILON ? trade.solAmount * (consumed.knownTokens / trade.tokenAmount) : 0;
-    const unknownProceeds = trade.tokenAmount > EPSILON ? trade.solAmount * (consumed.unknownTokens / trade.tokenAmount) : 0;
-    const unmatchedProceeds = Math.max(0, trade.solAmount - knownProceeds - unknownProceeds);
-    const tradePnl = knownProceeds - consumed.knownCost;
+    const purchasedProceeds = trade.tokenAmount > EPSILON
+      ? trade.solAmount * (consumed.purchasedTokens / trade.tokenAmount)
+      : 0;
+    const externalProceeds = trade.tokenAmount > EPSILON
+      ? trade.solAmount * (consumed.externalTokens / trade.tokenAmount)
+      : 0;
+    const unmatchedProceeds = Math.max(0, trade.solAmount - purchasedProceeds - externalProceeds);
+    const tradePnl = purchasedProceeds - consumed.purchasedCost;
 
     position.realizedPnl += tradePnl;
-    position.unknownCostSellProceedsSol += unknownProceeds;
+    position.externalSaleProceedsSol += externalProceeds;
+    position.unknownCostSellProceedsSol += externalProceeds;
 
-    if (consumed.knownTokens > EPSILON && consumed.knownCost > EPSILON) {
+    if (consumed.purchasedTokens > EPSILON && consumed.purchasedCost > EPSILON) {
       position.realizedTrades.push({
         tokenMint: trade.tokenMint,
         signature: trade.signature || null,
         blockTime: trade.blockTime ?? null,
         dex: trade.dex || null,
-        tokensSold: consumed.knownTokens,
-        costSol: consumed.knownCost,
-        proceedsSol: knownProceeds,
+        tokensSold: consumed.purchasedTokens,
+        purchasedTokensSold: consumed.purchasedTokens,
+        externalTokensSold: consumed.externalTokens,
+        transferTokensSold: consumed.transferTokens,
+        rewardTokensSold: consumed.rewardTokens,
+        costSol: consumed.purchasedCost,
+        proceedsSol: purchasedProceeds,
         pnlSol: tradePnl,
-        roiPct: (tradePnl / consumed.knownCost) * 100,
-        pnlComplete: consumed.unknownTokens <= EPSILON && consumed.remaining <= EPSILON
+        roiPct: (tradePnl / consumed.purchasedCost) * 100,
+        mixedOrigins: consumed.externalTokens > EPSILON || consumed.remaining > EPSILON,
+        pnlComplete: consumed.remaining <= EPSILON
+      });
+    }
+
+    if (consumed.externalTokens > EPSILON) {
+      position.externalSales.push({
+        tokenMint: trade.tokenMint,
+        signature: trade.signature || null,
+        blockTime: trade.blockTime ?? null,
+        dex: trade.dex || null,
+        tokensSold: consumed.externalTokens,
+        transferTokensSold: consumed.transferTokens,
+        rewardTokensSold: consumed.rewardTokens,
+        proceedsSol: externalProceeds,
+        origin: consumed.rewardTokens > EPSILON && consumed.transferTokens <= EPSILON
+          ? "REWARD"
+          : consumed.transferTokens > EPSILON && consumed.rewardTokens <= EPSILON
+            ? "TRANSFER_IN"
+            : "MIXED_EXTERNAL"
       });
     }
 
@@ -258,17 +313,19 @@ export function buildPositions(trades, transfers = [], rewards = []) {
 
   for (const position of positions.values()) {
     position.tokensRemaining = position.lots.reduce((total, lot) => total + lot.tokens, 0);
-    position.remainingCostSol = position.lots.reduce((total, lot) => total + (lot.costSol == null ? 0 : lot.costSol), 0);
-    position.unknownCostRemainingTokens = position.lots.reduce((total, lot) => total + (lot.costSol == null ? lot.tokens : 0), 0);
-    position.knownCostRemainingTokens = Math.max(0, position.tokensRemaining - position.unknownCostRemainingTokens);
-    position.unrealizedValueSol = position.knownCostRemainingTokens > EPSILON && finitePositive(position.lastPriceSol) ? position.knownCostRemainingTokens * position.lastPriceSol : 0;
-    position.unknownCostMarkedValueSol = position.unknownCostRemainingTokens > EPSILON && finitePositive(position.lastPriceSol) ? position.unknownCostRemainingTokens * position.lastPriceSol : 0;
+    position.purchasedTokensRemaining = position.lots.reduce((total, lot) => total + (lot.origin === "BUY" ? lot.tokens : 0), 0);
+    position.externalTokensRemaining = Math.max(0, position.tokensRemaining - position.purchasedTokensRemaining);
+    position.remainingCostSol = position.lots.reduce((total, lot) => total + (lot.origin === "BUY" && lot.costSol != null ? lot.costSol : 0), 0);
+    position.unknownCostRemainingTokens = position.externalTokensRemaining;
+    position.knownCostRemainingTokens = position.purchasedTokensRemaining;
+    position.unrealizedValueSol = position.purchasedTokensRemaining > EPSILON && finitePositive(position.lastPriceSol) ? position.purchasedTokensRemaining * position.lastPriceSol : 0;
+    position.unknownCostMarkedValueSol = position.externalTokensRemaining > EPSILON && finitePositive(position.lastPriceSol) ? position.externalTokensRemaining * position.lastPriceSol : 0;
     position.unrealizedPnl = position.unrealizedValueSol - position.remainingCostSol;
     position.totalPnl = position.realizedPnl + position.unrealizedPnl;
     position.realizedRoi = position.realizedCostBasis > EPSILON ? position.realizedPnl / position.realizedCostBasis : null;
     position.avgHoldingSeconds = position.matchedSoldTokens > EPSILON ? position.holdingSecondsWeighted / position.matchedSoldTokens : null;
     position.open = position.tokensRemaining > EPSILON;
-    position.pnlComplete = position.unknownCostSoldTokens <= EPSILON && position.unknownCostRemainingTokens <= EPSILON && position.unmatchedSoldTokens <= EPSILON;
+    position.pnlComplete = position.unmatchedSoldTokens <= EPSILON;
 
     delete position.lots;
 
