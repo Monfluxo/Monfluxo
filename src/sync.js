@@ -1,5 +1,6 @@
 import { getTransactionsForAddress } from "./helius.js";
 import { parseTransaction } from "./parserV2.js";
+import { parseNativeSolFunding } from "./fundingParser.js";
 import {
   assertEventModelV2Schema,
   upsertWallet,
@@ -9,6 +10,7 @@ import {
   upsertTrades,
   upsertTransfers,
   upsertRewards,
+  upsertFundingEvents,
   replaceWalletEventsForSignatures
 } from "./db.js";
 
@@ -136,6 +138,46 @@ function normalizedTransfer(wallet, transfer) {
   };
 }
 
+function normalizedTokenFunding(wallet, transfer) {
+  return {
+    wallet_address: wallet,
+    signature: transfer.signature,
+    event_index: Number.isInteger(transfer.eventIndex) ? transfer.eventIndex : 0,
+    slot: transfer.slot ?? null,
+    block_time: isoFromBlockTime(transfer.blockTime),
+    asset_type: "TOKEN",
+    asset_id: transfer.mint,
+    amount: transfer.amount,
+    raw_amount: transfer.rawAmount,
+    decimals: transfer.decimals,
+    source_address: transfer.sourceAddress ?? null,
+    destination_address: transfer.destinationAddress ?? wallet,
+    source_token_account: transfer.sourceTokenAccount ?? null,
+    destination_token_account: transfer.destinationTokenAccount ?? null,
+    parser: transfer.parser ?? "token_transfer"
+  };
+}
+
+function normalizedSolFunding(wallet, funding, slot = null) {
+  return {
+    wallet_address: wallet,
+    signature: funding.signature,
+    event_index: Number.isInteger(funding.eventIndex) ? funding.eventIndex : 0,
+    slot,
+    block_time: isoFromBlockTime(funding.blockTime),
+    asset_type: "SOL",
+    asset_id: "SOL",
+    amount: funding.amount,
+    raw_amount: funding.rawAmount,
+    decimals: 9,
+    source_address: funding.sourceAddress ?? null,
+    destination_address: funding.destinationAddress ?? wallet,
+    source_token_account: null,
+    destination_token_account: null,
+    parser: funding.parser ?? "system_transfer"
+  };
+}
+
 function inventoryRow(map, mint) {
   if (!map.has(mint)) {
     map.set(mint, { buys: 0, sells: 0, transferIn: 0, transferOut: 0 });
@@ -187,6 +229,7 @@ async function enrichFromTokenAccounts({
   let tokenAccountPages = 0;
   let supplementalTransactionsStored = 0;
   let supplementalTransfersStored = 0;
+  let supplementalFundingStored = 0;
 
   for (const mint of targetMints) {
     const accounts = [...(tokenAccountsByMint.get(mint) || [])];
@@ -207,6 +250,7 @@ async function enrichFromTokenAccounts({
 
         const txRows = [];
         const transferRows = [];
+        const fundingRows = [];
 
         for (const tx of transactions) {
           const signature = signatureOf(tx);
@@ -224,6 +268,9 @@ async function enrichFromTokenAccounts({
           txRows.push(normalizedTransaction(address, tx, analysis, storeRaw));
           for (const transfer of relevantTransfers) {
             transferRows.push(normalizedTransfer(address, transfer));
+            if (transfer.direction === "IN") {
+              fundingRows.push(normalizedTokenFunding(address, { ...transfer, slot: tx?.slot ?? null }));
+            }
           }
           observeAnalysis(inventory, {
             trades: [],
@@ -233,10 +280,12 @@ async function enrichFromTokenAccounts({
 
         await Promise.all([
           upsertTransactions(txRows),
-          upsertTransfers(transferRows)
+          upsertTransfers(transferRows),
+          upsertFundingEvents(fundingRows)
         ]);
         supplementalTransactionsStored += txRows.length;
         supplementalTransfersStored += transferRows.length;
+        supplementalFundingStored += fundingRows.length;
 
         paginationToken = result?.paginationToken || null;
         if (!paginationToken) break;
@@ -250,7 +299,8 @@ async function enrichFromTokenAccounts({
     tokenAccountsScanned,
     tokenAccountPages,
     supplementalTransactionsStored,
-    supplementalTransfersStored
+    supplementalTransfersStored,
+    supplementalFundingStored
   };
 }
 
@@ -305,6 +355,7 @@ export async function syncWalletHistory(address, options = {}) {
   let tradesStored = 0;
   let transfersStored = 0;
   let rewardsStored = 0;
+  let fundingStored = 0;
   let stoppedOnExisting = false;
   let newest = null;
   let oldest = null;
@@ -329,6 +380,7 @@ export async function syncWalletHistory(address, options = {}) {
       const tradeRows = [];
       const transferRows = [];
       const rewardRows = [];
+      const fundingRows = [];
       const reparsedSignatures = [];
 
       for (const tx of transactions) {
@@ -366,11 +418,21 @@ export async function syncWalletHistory(address, options = {}) {
         for (const transfer of analysis?.transfers || []) {
           if (transfer?.direction === "IN" || transfer?.direction === "OUT") {
             transferRows.push(normalizedTransfer(address, transfer));
+            if (transfer.direction === "IN") {
+              fundingRows.push(normalizedTokenFunding(address, { ...transfer, slot: tx?.slot ?? null }));
+            }
           }
         }
 
         for (const reward of analysis?.rewards || []) {
           rewardRows.push(normalizedReward(address, reward));
+        }
+
+        for (const funding of parseNativeSolFunding(tx, address, {
+          trades: analysis?.trades || [],
+          rewards: analysis?.rewards || []
+        })) {
+          fundingRows.push(normalizedSolFunding(address, funding, tx?.slot ?? null));
         }
 
         if (typeof tx?.blockTime === "number") {
@@ -388,13 +450,15 @@ export async function syncWalletHistory(address, options = {}) {
         upsertTransactions(txRows),
         upsertTrades(tradeRows),
         upsertTransfers(transferRows),
-        upsertRewards(rewardRows)
+        upsertRewards(rewardRows),
+        upsertFundingEvents(fundingRows)
       ]);
 
       total += txRows.length;
       tradesStored += tradeRows.length;
       transfersStored += transferRows.length;
       rewardsStored += rewardRows.length;
+      fundingStored += fundingRows.length;
 
       if (stoppedOnExisting) break;
 
@@ -484,6 +548,7 @@ export async function syncWalletHistory(address, options = {}) {
       tradesStored,
       transfersStored,
       rewardsStored,
+      fundingStored,
       tokenAccountEnrichment,
       stoppedOnExisting,
       unifiedTokenHistory,
