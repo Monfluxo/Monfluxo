@@ -76,8 +76,8 @@ export function buildHoldBehavior(positions = []) {
     p75HoldSeconds: percentile(holds, 0.75),
     averageWinnerHoldSeconds: average(winners),
     averageLoserHoldSeconds: average(losers),
-    longest: [...rows].sort((a, b) => b.holdSeconds - a.holdSeconds).slice(0, 10),
-    shortest: [...rows].sort((a, b) => a.holdSeconds - b.holdSeconds).slice(0, 10),
+    longest: [...rows].sort((a, b) => b.holdSeconds - a.holdSeconds).slice(0, 6),
+    shortest: [...rows].sort((a, b) => a.holdSeconds - b.holdSeconds).slice(0, 6),
     reentryRatePct: rows.length ? (reentered.length / rows.length) * 100 : null,
     avgReentriesWhenPresent: reentered.length ? average(reentered.map((r) => r.reentryCount)) : null,
     pnlConcentration: {
