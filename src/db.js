@@ -172,6 +172,13 @@ export async function getWalletFundingPage(address, limit = 100, offset = 0) {
   );
 }
 
+export async function getAnalysisCache(address) {
+  const rows = await request(
+    `wallet_analysis_cache?wallet_address=eq.${queryEncode(address)}&select=*&limit=1`
+  );
+  return rows[0] || null;
+}
+
 export async function upsertAnalysisCache(row) {
   return request("wallet_analysis_cache?on_conflict=wallet_address", {
     method: "POST",
