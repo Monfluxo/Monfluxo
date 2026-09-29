@@ -37,17 +37,22 @@ function coverageFromState(state) {
 
 function sanitizeMetrics(metrics) {
   if (!metrics || typeof metrics !== "object") return metrics;
-  const cleanRanked = (items) => (Array.isArray(items) ? items : []).filter((trade) =>
-    trade?.pnlComplete === true &&
-    Number.isFinite(Number(trade?.costSol)) &&
-    Number(trade.costSol) >= MIN_RANKED_TRADE_COST_SOL &&
-    Number.isFinite(Number(trade?.roiPct))
+  const tokenNetRanking = metrics.rankingUnit === "TOKEN_LIFETIME_NET";
+  const cleanRanked = (items) => (Array.isArray(items) ? items : []).filter((result) =>
+    (tokenNetRanking || result?.pnlComplete === true) &&
+    Number.isFinite(Number(result?.costSol)) &&
+    Number(result.costSol) >= MIN_RANKED_TRADE_COST_SOL &&
+    Number.isFinite(Number(result?.roiPct))
   );
 
   const originalBest = Array.isArray(metrics.bestTrades) ? metrics.bestTrades.length : 0;
   const originalWorst = Array.isArray(metrics.worstTrades) ? metrics.worstTrades.length : 0;
-  const bestTrades = cleanRanked(metrics.bestTrades).slice(0, 5);
-  const worstTrades = cleanRanked(metrics.worstTrades).slice(0, 5);
+  const bestTrades = cleanRanked(metrics.bestTrades)
+    .filter((result) => Number(result.pnlSol) > 0)
+    .slice(0, 5);
+  const worstTrades = cleanRanked(metrics.worstTrades)
+    .filter((result) => Number(result.pnlSol) < 0)
+    .slice(0, 5);
 
   return {
     ...metrics,
