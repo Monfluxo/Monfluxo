@@ -99,16 +99,15 @@ function consumeLots(position, tokenAmount, blockTime, purpose) {
       purchasedCost += cost;
       purchasedTokens += tokensFromLot;
       lot.costSol -= cost;
+      if (purpose === "SELL" && lot.blockTime != null && blockTime != null && blockTime >= lot.blockTime) {
+        position.holdingSecondsWeighted += tokensFromLot * (blockTime - lot.blockTime);
+      }
     } else if (lot.origin === "TRANSFER_IN") {
       transferTokens += tokensFromLot;
     } else if (lot.origin === "REWARD") {
       rewardTokens += tokensFromLot;
     } else {
       otherExternalTokens += tokensFromLot;
-    }
-
-    if (lot.blockTime != null && blockTime != null && blockTime >= lot.blockTime) {
-      position.holdingSecondsWeighted += tokensFromLot * (blockTime - lot.blockTime);
     }
 
     lot.tokens -= tokensFromLot;
@@ -121,7 +120,7 @@ function consumeLots(position, tokenAmount, blockTime, purpose) {
   const externalTokens = transferTokens + rewardTokens + otherExternalTokens;
 
   if (purpose === "SELL") {
-    position.matchedSoldTokens += totalMatched;
+    position.matchedSoldTokens += purchasedTokens;
     position.knownCostSoldTokens += purchasedTokens;
     position.unknownCostSoldTokens += externalTokens;
     position.realizedCostBasis += purchasedCost;
@@ -151,13 +150,23 @@ function eventSlot(value) {
   return Number.isFinite(slot) ? slot : null;
 }
 
+function transferTradeKey(signature, mint, direction) {
+  if (!signature || !mint || !direction) return null;
+  return `${signature}|${mint}|${direction}`;
+}
+
 export function buildPositions(trades, transfers = [], rewards = []) {
   const positions = new Map();
   const events = [];
+  const swapTransferKeys = new Set();
+  const rewardTransferKeys = new Set();
 
   for (const trade of trades || []) {
     if (!trade || !trade.tokenMint || !finitePositive(trade.tokenAmount) || !Number.isFinite(trade.solAmount) || trade.solAmount < 0 || (trade.type !== "BUY" && trade.type !== "SELL")) continue;
     if (isLowConfidenceDustTrade(trade)) continue;
+    const direction = trade.type === "BUY" ? "IN" : "OUT";
+    const key = transferTradeKey(trade.signature, trade.tokenMint, direction);
+    if (key) swapTransferKeys.add(key);
     events.push({
       kind: "TRADE",
       blockTime: trade.blockTime ?? null,
@@ -168,20 +177,10 @@ export function buildPositions(trades, transfers = [], rewards = []) {
     });
   }
 
-  for (const transfer of transfers || []) {
-    if (!transfer || !transfer.mint || !finitePositive(transfer.amount) || !["IN", "OUT"].includes(transfer.direction)) continue;
-    events.push({
-      kind: "TRANSFER",
-      blockTime: transfer.blockTime ?? null,
-      slot: eventSlot(transfer.slot),
-      eventIndex: Number.isInteger(transfer.eventIndex) ? transfer.eventIndex : 0,
-      signature: transfer.signature || "",
-      data: transfer
-    });
-  }
-
   for (const reward of rewards || []) {
     if (!reward || !reward.quoteMint || !finitePositive(reward.amount)) continue;
+    const key = transferTradeKey(reward.signature, reward.quoteMint, "IN");
+    if (key) rewardTransferKeys.add(key);
     events.push({
       kind: "REWARD",
       blockTime: reward.blockTime ?? null,
@@ -192,7 +191,21 @@ export function buildPositions(trades, transfers = [], rewards = []) {
     });
   }
 
-  const priority = { TRANSFER: 0, REWARD: 1, TRADE: 2 };
+  for (const transfer of transfers || []) {
+    if (!transfer || !transfer.mint || !finitePositive(transfer.amount) || !["IN", "OUT"].includes(transfer.direction)) continue;
+    const key = transferTradeKey(transfer.signature, transfer.mint, transfer.direction);
+    if (key && (swapTransferKeys.has(key) || rewardTransferKeys.has(key))) continue;
+    events.push({
+      kind: "TRANSFER",
+      blockTime: transfer.blockTime ?? null,
+      slot: eventSlot(transfer.slot),
+      eventIndex: Number.isInteger(transfer.eventIndex) ? transfer.eventIndex : 0,
+      signature: transfer.signature || "",
+      data: transfer
+    });
+  }
+
+  const priority = { REWARD: 0, TRADE: 1, TRANSFER: 2 };
   events.sort((a, b) => {
     const timeDiff = (a.blockTime ?? 0) - (b.blockTime ?? 0);
     if (timeDiff !== 0) return timeDiff;
@@ -324,7 +337,7 @@ export function buildPositions(trades, transfers = [], rewards = []) {
     position.totalPnl = position.realizedPnl + position.unrealizedPnl;
     position.realizedRoi = position.realizedCostBasis > EPSILON ? position.realizedPnl / position.realizedCostBasis : null;
     position.avgHoldingSeconds = position.matchedSoldTokens > EPSILON ? position.holdingSecondsWeighted / position.matchedSoldTokens : null;
-    position.open = position.tokensRemaining > EPSILON;
+    position.open = position.purchasedTokensRemaining > EPSILON;
     position.pnlComplete = position.unmatchedSoldTokens <= EPSILON;
 
     delete position.lots;
