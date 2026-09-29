@@ -3,11 +3,21 @@ import { requestWalletDashboard } from "./walletProductService.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const ALLOWED_ORIGIN = process.env.MONFLUXO_WEB_ORIGIN || "http://localhost:3001";
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+    "Access-Control-Allow-Methods": "GET,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type"
+  };
+}
 
 function sendJson(res, statusCode, body) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
+    "Cache-Control": "no-store",
+    ...corsHeaders()
   });
   res.end(JSON.stringify(body));
 }
@@ -19,6 +29,11 @@ function walletFromPath(pathname) {
 
 export async function handleRequest(req, res) {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, corsHeaders());
+    return res.end();
+  }
 
   if (req.method === "GET" && url.pathname === "/health") {
     return sendJson(res, 200, { ok: true, service: "monfluxo-api" });
@@ -72,5 +87,6 @@ if (process.argv[1]?.endsWith("httpApi.js")) {
   const server = createServer();
   server.listen(PORT, () => {
     console.log(`MONFLUXO API listening on http://localhost:${PORT}`);
+    console.log(`CORS origin: ${ALLOWED_ORIGIN}`);
   });
 }
