@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 
 const DEFAULT_WALLET = "6DQAGJT7VZPVBsuG4kn3AvpyHCEi7B2RFFvMZdbqQqqP";
-const API_BASE = process.env.NEXT_PUBLIC_MONFLUXO_API || "http://localhost:3000";
 
 function fmt(value, digits = 2) {
   const n = Number(value);
@@ -112,7 +111,7 @@ export default function Home() {
     setError("");
 
     try {
-      const response = await fetch(`${API_BASE}/api/wallet/${encodeURIComponent(address)}`, {
+      const response = await fetch(`/api/wallet/${encodeURIComponent(address)}`, {
         cache: "no-store"
       });
       const payload = await response.json();
