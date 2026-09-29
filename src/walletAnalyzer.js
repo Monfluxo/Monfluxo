@@ -6,7 +6,7 @@ import {
   getTradeSamples,
   upsertAnalysisCache
 } from "./db.js";
-import { buildPositions } from "./positionEngine.js";
+import { buildPositions, isLowConfidenceDustTrade } from "./positionEngine.js";
 
 function mapTrade(row) {
   return {
@@ -104,9 +104,9 @@ function summarizePosition(position) {
 }
 
 function eventOrder(a, b, indexField) {
-  if (a.slot != null && b.slot != null && a.slot !== b.slot) return a.slot - b.slot;
   const time = (a.blockTime ?? 0) - (b.blockTime ?? 0);
   if (time !== 0) return time;
+  if (a.slot != null && b.slot != null && a.slot !== b.slot) return a.slot - b.slot;
   const index = Number(a[indexField] || 0) - Number(b[indexField] || 0);
   if (index !== 0) return index;
   return String(a.signature || "").localeCompare(String(b.signature || ""));
@@ -123,11 +123,21 @@ export async function analyzeWallet(address, options = {}) {
   const trades = [];
   const transfers = [];
   const rewards = [];
+  let lowConfidenceTradesExcluded = 0;
+  let lowConfidenceVolumeSolExcluded = 0;
 
   for (let offset = 0; offset < maxRows; offset += pageSize) {
     const rows = await getWalletTradePage(address, pageSize, offset);
     if (!rows.length) break;
-    trades.push(...rows.map(mapTrade));
+    for (const row of rows) {
+      const trade = mapTrade(row);
+      if (isLowConfidenceDustTrade(trade)) {
+        lowConfidenceTradesExcluded++;
+        lowConfidenceVolumeSolExcluded += trade.solAmount;
+        continue;
+      }
+      trades.push(trade);
+    }
     if (rows.length < pageSize) break;
   }
 
@@ -224,6 +234,8 @@ export async function analyzeWallet(address, options = {}) {
     mode,
     generatedAt: new Date().toISOString(),
     tradesAnalyzed: trades.length,
+    lowConfidenceTradesExcluded,
+    lowConfidenceVolumeSolExcluded: round(lowConfidenceVolumeSolExcluded),
     transfersAnalyzed: transfers.length,
     transferInCount: transferCounts.IN,
     transferOutCount: transferCounts.OUT,
