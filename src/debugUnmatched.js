@@ -1,11 +1,10 @@
-import { getTransactionsForAddress } from "./helius.js";
-import { parseSwapTransaction } from "./swapParser.js";
-import { getWalletTradePage, getTradeSamples } from "./db.js";
-
-const WSOL_MINT = "So11111111111111111111111111111111111111112";
-const SYSTEM_PROGRAM = "11111111111111111111111111111111";
-const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJnbGKPFXCWuBvf9Ss623VQ5DA";
-const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPXxuEb";
+import {
+  getWalletTradePage,
+  getWalletTransferPage,
+  getWalletRewardsPage,
+  getTradeSamples
+} from "./db.js";
+import { buildPositions } from "./positionEngine.js";
 
 let address = process.argv[2];
 if (!address) {
@@ -14,204 +13,131 @@ if (!address) {
   if (!address) process.exit(1);
 }
 
-function signatureOf(tx) {
-  return tx?.transaction?.signatures?.[0] || tx?.signature || null;
+const PAGE_SIZE = 1000;
+const MAX_ROWS = Number(process.env.DEBUG_MAX_ROWS || 500000);
+const TOP = Number(process.env.DEBUG_TOP_UNMATCHED || 20);
+
+function toSeconds(value) {
+  return value ? Math.floor(new Date(value).getTime() / 1000) : null;
 }
 
-function balanceKey(balance) {
-  return `${balance?.accountIndex ?? balance?.account ?? "?"}:${balance?.mint || ""}`;
+function mapTrade(row) {
+  return {
+    wallet: row.wallet_address,
+    signature: row.signature,
+    slot: row.slot == null ? null : Number(row.slot),
+    eventIndex: Number(row.event_index || 0),
+    instructionIndex: row.instruction_index == null ? null : Number(row.instruction_index),
+    blockTime: toSeconds(row.block_time),
+    type: row.type,
+    tokenMint: row.token_mint,
+    tokenAmount: Number(row.token_amount),
+    solAmount: Number(row.sol_amount),
+    estimatedPriceSol: row.estimated_price_sol == null ? null : Number(row.estimated_price_sol),
+    feeSol: row.fee_sol == null ? null : Number(row.fee_sol),
+    dex: row.dex,
+    parser: row.parser
+  };
 }
 
-function tokenAmount(balance) {
-  return Number(balance?.uiTokenAmount?.uiAmountString ?? balance?.uiTokenAmount?.uiAmount ?? 0);
+function mapTransfer(row) {
+  return {
+    wallet: row.wallet_address,
+    signature: row.signature,
+    slot: row.slot == null ? null : Number(row.slot),
+    eventIndex: Number(row.event_index || 0),
+    instructionIndex: row.instruction_index == null ? null : Number(row.instruction_index),
+    blockTime: toSeconds(row.block_time),
+    direction: row.direction,
+    mint: row.token_mint,
+    amount: Number(row.token_amount),
+    rawAmount: row.raw_amount,
+    decimals: Number(row.decimals || 0),
+    sourceAddress: row.source_address,
+    destinationAddress: row.destination_address,
+    parser: row.parser
+  };
 }
 
-function tokenDeltaForWallet(tx, mint, wallet) {
-  const pre = new Map();
-  const post = new Map();
+function mapReward(row) {
+  return {
+    wallet: row.wallet_address,
+    signature: row.signature,
+    slot: row.slot == null ? null : Number(row.slot),
+    blockTime: toSeconds(row.block_time),
+    rewardType: row.reward_type,
+    quoteMint: row.quote_mint,
+    amount: Number(row.amount),
+    decimals: Number(row.decimals || 0),
+    creator: row.creator,
+    instructionIndex: Number(row.instruction_index || 0)
+  };
+}
 
-  for (const balance of tx?.meta?.preTokenBalances || []) {
-    if (balance?.owner === wallet && balance?.mint === mint) {
-      pre.set(balanceKey(balance), tokenAmount(balance));
-    }
+async function loadAll(getPage, mapper) {
+  const rows = [];
+  for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
+    const page = await getPage(address, PAGE_SIZE, offset);
+    if (!page.length) break;
+    rows.push(...page.map(mapper));
+    if (page.length < PAGE_SIZE) break;
   }
-
-  for (const balance of tx?.meta?.postTokenBalances || []) {
-    if (balance?.owner === wallet && balance?.mint === mint) {
-      post.set(balanceKey(balance), tokenAmount(balance));
-    }
-  }
-
-  const keys = new Set([...pre.keys(), ...post.keys()]);
-  let delta = 0;
-  for (const key of keys) delta += (post.get(key) || 0) - (pre.get(key) || 0);
-  return delta;
+  return rows;
 }
 
-function allProgramIds(tx) {
-  const keys = [
-    ...(tx?.transaction?.message?.accountKeys || []),
-    ...(tx?.meta?.loadedAddresses?.writable || []),
-    ...(tx?.meta?.loadedAddresses?.readonly || [])
-  ];
+const [trades, transfers, rewards] = await Promise.all([
+  loadAll(getWalletTradePage, mapTrade),
+  loadAll(getWalletTransferPage, mapTransfer),
+  loadAll(getWalletRewardsPage, mapReward)
+]);
 
-  return [...new Set(keys.map((x) => typeof x === "string" ? x : x?.pubkey).filter(Boolean))];
-}
-
-function classifyPrograms(ids) {
-  const known = [];
-  if (ids.includes("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P")) known.push("Pump.fun");
-  if (ids.includes("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA")) known.push("Pump AMM");
-  if (ids.includes("675kPX9MHTjS2zt1qfr1NYHuZeLXfQM9H24yFSUt1Mp8")) known.push("Raydium");
-  if (ids.includes("proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u") ||
-      ids.includes("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4")) known.push("Jupiter");
-  if (ids.includes(SYSTEM_PROGRAM)) known.push("System");
-  if (ids.includes(TOKEN_PROGRAM)) known.push("SPL Token");
-  if (ids.includes(TOKEN_2022_PROGRAM)) known.push("Token-2022");
-  return known;
-}
-
-const rows = [];
-for (let offset = 0; offset < 500000; offset += 1000) {
-  const page = await getWalletTradePage(address, 1000, offset);
-  if (!page.length) break;
-  rows.push(...page);
-  if (page.length < 1000) break;
-}
-
-rows.sort((a, b) => new Date(a.block_time || 0) - new Date(b.block_time || 0));
-
-const inventory = new Map();
-const unmatched = [];
-
-for (const row of rows) {
-  const mint = row.token_mint;
-  const amount = Number(row.token_amount);
-  if (!mint || !Number.isFinite(amount) || amount <= 0) continue;
-
-  const available = inventory.get(mint) || 0;
-  if (row.type === "BUY") {
-    inventory.set(mint, available + amount);
-  } else if (row.type === "SELL") {
-    const missing = amount - Math.min(available, amount);
-    inventory.set(mint, Math.max(0, available - amount));
-    if (missing > 0) unmatched.push({ row, missing });
-  }
-}
-
-const affected = [...unmatched.reduce((map, item) => {
-  const mint = item.row.token_mint;
-  if (!map.has(mint)) map.set(mint, []);
-  map.get(mint).push(item);
-  return map;
-}, new Map()).entries()]
-  .map(([mint, items]) => ({
-    mint,
-    items,
-    missing: items.reduce((s, x) => s + x.missing, 0),
-    proceeds: items.reduce((s, x) => {
-      const a = Number(x.row.token_amount);
-      return s + (a > 0 ? Number(x.row.sol_amount) * x.missing / a : 0);
-    }, 0)
+const positions = buildPositions(trades, transfers, rewards);
+const affected = [...positions.values()]
+  .filter((p) => Number(p.unmatchedSoldTokens || 0) > 1e-9)
+  .map((p) => ({
+    mint: p.mint,
+    unmatchedSoldTokens: Number(p.unmatchedSoldTokens || 0),
+    unmatchedSellProceedsSol: Number(p.unmatchedSellProceedsSol || 0),
+    unknownCostSoldTokens: Number(p.unknownCostSoldTokens || 0),
+    unknownCostSellProceedsSol: Number(p.unknownCostSellProceedsSol || 0),
+    buys: p.buys,
+    sells: p.sells,
+    transferIns: p.transferIns,
+    transferOuts: p.transferOuts,
+    rewardIns: p.rewardIns,
+    pnlComplete: p.pnlComplete
   }))
-  .sort((a, b) => b.proceeds - a.proceeds);
+  .sort((a, b) => b.unmatchedSellProceedsSol - a.unmatchedSellProceedsSol);
 
-const targets = new Map(affected.slice(0, 10).map(x => [x.mint, x]));
-const firstSellByMint = new Map(
-  [...targets].map(([mint, target]) => [
-    mint,
-    new Date(target.items[0].row.block_time || 0).getTime()
-  ])
-);
-
-const found = new Map();
-let paginationToken = null;
-let pages = 0;
-let scannedTransactions = 0;
-let reachedAllTargets = false;
-
-while (pages < Number(process.env.MAX_DEEP_PAGES || 500) && !reachedAllTargets) {
-  pages++;
-  const result = await getTransactionsForAddress(address, paginationToken);
-  const txs = result?.data || [];
-  if (!txs.length) break;
-
-  for (const tx of txs) {
-    scannedTransactions++;
-    const blockTime = Number(tx?.blockTime || 0) * 1000;
-    const signature = signatureOf(tx);
-    if (!signature) continue;
-
-    for (const [mint, target] of targets) {
-      const firstSellTime = firstSellByMint.get(mint);
-      if (blockTime > firstSellTime) continue;
-
-      const delta = tokenDeltaForWallet(tx, mint, address);
-      if (delta <= 0) continue;
-
-      const swap = parseSwapTransaction(tx, address);
-      const programs = classifyPrograms(allProgramIds(tx));
-
-      if (!found.has(mint)) found.set(mint, []);
-      found.get(mint).push({
-        signature,
-        blockTime: tx.blockTime,
-        tokenDelta: delta,
-        parserType: swap?.type || "OTHER",
-        parserDex: swap?.dex || null,
-        parserOutputMint: swap?.outputMint || null,
-        parserOutputAmount: swap?.outputAmount || null,
-        parserInputAmount: swap?.inputAmount || null,
-        programs
-      });
-    }
-  }
-
-  const oldestTimes = [...targets].map(([mint]) => {
-    const items = found.get(mint) || [];
-    return items.length ? Math.min(...items.map(x => Number(x.blockTime || 0) * 1000)) : Infinity;
-  });
-
-  const earliestNeeded = Math.min(...firstSellByMint.values());
-  const oldestTxTime = Math.max(...oldestTimes);
-  if (oldestTxTime < earliestNeeded) reachedAllTargets = true;
-
-  paginationToken = result?.paginationToken || null;
-  if (!paginationToken) break;
-}
+const totalUnmatchedTokens = affected.reduce((s, x) => s + x.unmatchedSoldTokens, 0);
+const totalUnmatchedSol = affected.reduce((s, x) => s + x.unmatchedSellProceedsSol, 0);
 
 console.log(`Wallet: ${address}`);
-console.log(`Trades: ${rows.length} | Unmatched tokens: ${unmatched.reduce((s, x) => s + x.missing, 0)} | Unmatched proceeds: ${unmatched.reduce((s, x) => s + Number(x.row.sol_amount) * x.missing / Number(x.row.token_amount), 0).toFixed(4)} SOL`);
-console.log(`Affected tokens: ${affected.length} | Top targets: ${targets.size} | Helius pages: ${pages} | Transactions scanned: ${scannedTransactions}`);
+console.log(
+  `Trades=${trades.length} Transfers=${transfers.length} Rewards=${rewards.length} ` +
+  `Positions=${positions.size}`
+);
+console.log(
+  `Unmatched positions=${affected.length} | ` +
+  `Unmatched tokens=${totalUnmatchedTokens} | ` +
+  `Unmatched proceeds=${totalUnmatchedSol.toFixed(6)} SOL`
+);
 
-for (const [mint, target] of targets) {
-  const matches = found.get(mint) || [];
-  const first = target.items[0].row;
-
-  console.log(`\n=== ${mint} ===`);
-  console.log(`missing=${target.missing} | unmatchedSOL=${target.proceeds.toFixed(4)}`);
-  console.log(`first unmatched SELL=${first.signature}`);
-  console.log(`token inflows before first unmatched SELL: ${matches.length}`);
-
-  if (!matches.length) {
-    console.log("NO WALLET TOKEN INFLOW FOUND IN HELIUS HISTORY");
-    continue;
-  }
-
-  for (const match of matches.slice(0, 15)) {
-    const time = match.blockTime ? new Date(Number(match.blockTime) * 1000).toISOString() : "unknown";
-    console.log(
-      [
-        `INFLOW ${time}`,
-        `delta=${match.tokenDelta}`,
-        `parser=${match.parserType}`,
-        `dex=${match.parserDex || "-"}`,
-        `parsedOut=${match.parserOutputAmount || "-"}`,
-        `programs=${match.programs.join(",") || "-"}`,
-        `sig=${match.signature}`
-      ].join(" | ")
-    );
-  }
+for (const item of affected.slice(0, TOP)) {
+  console.log("\n---");
+  console.log(`mint=${item.mint}`);
+  console.log(`unmatchedTokens=${item.unmatchedSoldTokens}`);
+  console.log(`unmatchedSOL=${item.unmatchedSellProceedsSol.toFixed(6)}`);
+  console.log(
+    `buys=${item.buys} sells=${item.sells} ` +
+    `transferIns=${item.transferIns} transferOuts=${item.transferOuts} ` +
+    `rewardIns=${item.rewardIns}`
+  );
+  console.log(
+    `unknownCostSoldTokens=${item.unknownCostSoldTokens} ` +
+    `unknownCostSellProceedsSOL=${item.unknownCostSellProceedsSol.toFixed(6)} ` +
+    `pnlComplete=${item.pnlComplete}`
+  );
 }
 
-console.log("\nDiagnóstico terminado — no modifica la DB.");
+console.log("\nDiagnóstico terminado — usa exactamente buildPositions() y no modifica la DB.");
