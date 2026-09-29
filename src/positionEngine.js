@@ -56,7 +56,8 @@ function ensurePosition(positions, mint, blockTime = null) {
       firstBlockTime: blockTime,
       lastBlockTime: blockTime,
       lastPriceSol: null,
-      lots: []
+      lots: [],
+      realizedTrades: []
     });
   }
   return positions.get(mint);
@@ -229,9 +230,25 @@ export function buildPositions(trades, transfers = [], rewards = []) {
     const knownProceeds = trade.tokenAmount > EPSILON ? trade.solAmount * (consumed.knownTokens / trade.tokenAmount) : 0;
     const unknownProceeds = trade.tokenAmount > EPSILON ? trade.solAmount * (consumed.unknownTokens / trade.tokenAmount) : 0;
     const unmatchedProceeds = Math.max(0, trade.solAmount - knownProceeds - unknownProceeds);
+    const tradePnl = knownProceeds - consumed.knownCost;
 
-    position.realizedPnl += knownProceeds - consumed.knownCost;
+    position.realizedPnl += tradePnl;
     position.unknownCostSellProceedsSol += unknownProceeds;
+
+    if (consumed.knownTokens > EPSILON && consumed.knownCost > EPSILON) {
+      position.realizedTrades.push({
+        tokenMint: trade.tokenMint,
+        signature: trade.signature || null,
+        blockTime: trade.blockTime ?? null,
+        dex: trade.dex || null,
+        tokensSold: consumed.knownTokens,
+        costSol: consumed.knownCost,
+        proceedsSol: knownProceeds,
+        pnlSol: tradePnl,
+        roiPct: (tradePnl / consumed.knownCost) * 100,
+        pnlComplete: consumed.unknownTokens <= EPSILON && consumed.remaining <= EPSILON
+      });
+    }
 
     if (consumed.remaining > EPSILON) {
       position.unmatchedSoldTokens += consumed.remaining;
