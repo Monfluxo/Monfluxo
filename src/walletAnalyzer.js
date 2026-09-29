@@ -103,6 +103,21 @@ function summarizePosition(position) {
   };
 }
 
+function summarizeRealizedTrade(trade) {
+  return {
+    tokenMint: trade.tokenMint,
+    signature: trade.signature || null,
+    blockTime: trade.blockTime ?? null,
+    dex: trade.dex || null,
+    tokensSold: round(trade.tokensSold),
+    costSol: round(trade.costSol),
+    proceedsSol: round(trade.proceedsSol),
+    pnlSol: round(trade.pnlSol),
+    roiPct: round(trade.roiPct, 2),
+    pnlComplete: trade.pnlComplete === true
+  };
+}
+
 function eventOrder(a, b, indexField) {
   const time = (a.blockTime ?? 0) - (b.blockTime ?? 0);
   if (time !== 0) return time;
@@ -222,9 +237,14 @@ export async function analyzeWallet(address, options = {}) {
     if (position.realizedPnl < 0) losingPositions++;
   }
 
+  const realizedTrades = positionList
+    .flatMap((position) => position.realizedTrades || [])
+    .filter((trade) => Number.isFinite(trade.pnlSol) && Number.isFinite(trade.costSol) && trade.costSol > 0);
+  const rankedRealizedTrades = [...realizedTrades].sort((a, b) => b.pnlSol - a.pnlSol);
+  const bestTrades = rankedRealizedTrades.slice(0, 5).map(summarizeRealizedTrade);
+  const worstTrades = rankedRealizedTrades.slice(-5).reverse().map(summarizeRealizedTrade);
+
   const rankedPositions = [...positionList].sort((a, b) => b.totalPnl - a.totalPnl);
-  const bestTrades = rankedPositions.slice(0, 3).map(summarizePosition);
-  const worstTrades = rankedPositions.slice(-3).reverse().map(summarizePosition);
   const matchedPositions = winningPositions + losingPositions;
   const openTokens = positionList.filter((position) => position.open);
   const topPositions = rankedPositions.slice(0, 10).map(summarizePosition);
@@ -234,6 +254,7 @@ export async function analyzeWallet(address, options = {}) {
     mode,
     generatedAt: new Date().toISOString(),
     tradesAnalyzed: trades.length,
+    realizedTradesAnalyzed: realizedTrades.length,
     lowConfidenceTradesExcluded,
     lowConfidenceVolumeSolExcluded: round(lowConfidenceVolumeSolExcluded),
     transfersAnalyzed: transfers.length,
@@ -268,8 +289,8 @@ export async function analyzeWallet(address, options = {}) {
     openExposureCostSol: round(openTokens.reduce((sum, position) => sum + position.remainingCostSol, 0)),
     openMarkedValueSol: round(openTokens.reduce((sum, position) => sum + position.unrealizedValueSol, 0)),
     unknownCostMarkedValueSol: round(openTokens.reduce((sum, position) => sum + position.unknownCostMarkedValueSol, 0)),
-    best: bestTrades[0] || null,
-    worst: worstTrades[0] || null,
+    best: rankedPositions.length ? summarizePosition(rankedPositions[0]) : null,
+    worst: rankedPositions.length ? summarizePosition(rankedPositions[rankedPositions.length - 1]) : null,
     bestTrades,
     worstTrades,
     dexCounts,
