@@ -11,6 +11,23 @@ function percentile(values, p) {
 }
 function median(values) { return percentile(values, 0.5); }
 
+const HOLD_EPSILON = 1e-9;
+const MIN_OPEN_POSITION_VALUE_SOL = Number(process.env.MIN_OPEN_POSITION_VALUE_SOL || 0.005);
+
+function estimatedResidualValueSol(position) {
+  const tokens = Number(position?.purchasedTokensRemaining || 0);
+  if (!(tokens > HOLD_EPSILON)) return 0;
+  const lastPrice = Number(position?.lastPriceSol || 0);
+  if (Number.isFinite(lastPrice) && lastPrice > 0) return tokens * lastPrice;
+  const remainingCost = Number(position?.remainingCostSol || 0);
+  return Number.isFinite(remainingCost) && remainingCost > 0 ? remainingCost : 0;
+}
+
+function hasMaterialPurchasedInventory(position) {
+  return Number(position?.purchasedTokensRemaining || 0) > HOLD_EPSILON &&
+    estimatedResidualValueSol(position) >= MIN_OPEN_POSITION_VALUE_SOL;
+}
+
 function classifyBehavior({ medianHoldSeconds, averageWinnerHoldSeconds, averageLoserHoldSeconds, reentryRatePct, top1Pct }) {
   const tags = [];
   if (Number.isFinite(medianHoldSeconds)) {
@@ -38,10 +55,10 @@ function classifyBehavior({ medianHoldSeconds, averageWinnerHoldSeconds, average
 
 export function buildHoldBehavior(positions = []) {
   const closed = positions.filter((p) =>
-    Number(p?.purchasedTokensRemaining || 0) <= 1e-9 &&
+    !hasMaterialPurchasedInventory(p) &&
     Number(p?.realizedCostBasis || 0) > 0 &&
-    Number(p?.unmatchedSoldTokens || 0) <= 1e-9 &&
-    Number(p?.transferredOutKnownCostSol || 0) <= 1e-9 &&
+    Number(p?.unmatchedSoldTokens || 0) <= HOLD_EPSILON &&
+    Number(p?.transferredOutKnownCostSol || 0) <= HOLD_EPSILON &&
     Number.isFinite(Number(p?.avgHoldingSeconds))
   );
 
@@ -68,7 +85,7 @@ export function buildHoldBehavior(positions = []) {
   const top5 = sortedPositive.slice(0, 5).reduce((s, r) => s + r.realizedPnlSol, 0);
 
   const result = {
-    methodology: "purchased_inventory_closed_tokens_v2",
+    methodology: "purchased_inventory_closed_tokens_v3_material_dust",
     sampleSize: rows.length,
     averageHoldSeconds: average(holds),
     medianHoldSeconds: median(holds),
