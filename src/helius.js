@@ -12,6 +12,8 @@ const FULL_PAGE_LIMIT = Math.min(
   Math.max(Number(process.env.HELIUS_FULL_PAGE_LIMIT || 100), 1),
   100
 );
+const TOKEN_METADATA_CACHE_MS = Number(process.env.TOKEN_METADATA_CACHE_MS || 10 * 60 * 1000);
+const tokenMetadataCache = new Map();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -101,7 +103,10 @@ async function fetchJsonMetadata(uri) {
   const resolved = normalizeMediaUri(uri);
   if (!resolved) return null;
   try {
-    const response = await fetch(resolved, { signal: AbortSignal.timeout(3500) });
+    const response = await fetch(resolved, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(4500)
+    });
     if (!response.ok) return null;
     return await response.json();
   } catch {
@@ -118,6 +123,7 @@ function firstImageCandidate(asset, remote) {
     assetFiles[0]?.uri,
     remote?.image,
     remote?.image_url,
+    remote?.imageUrl,
     remoteFiles.find((file) => String(file?.type || file?.mime || "").startsWith("image/"))?.uri,
     remoteFiles[0]?.uri
   ];
@@ -128,7 +134,42 @@ function firstImageCandidate(asset, remote) {
   return null;
 }
 
+async function getDexScreenerMetadata(mint) {
+  try {
+    const response = await fetch(`https://api.dexscreener.com/token-pairs/v1/solana/${encodeURIComponent(mint)}`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(4500)
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const pairs = Array.isArray(payload) ? payload : Array.isArray(payload?.pairs) ? payload.pairs : [];
+    if (!pairs.length) return null;
+
+    const ranked = [...pairs].sort((a, b) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0));
+    for (const pair of ranked) {
+      const baseMatches = pair?.baseToken?.address === mint;
+      const quoteMatches = pair?.quoteToken?.address === mint;
+      if (!baseMatches && !quoteMatches) continue;
+      const token = baseMatches ? pair.baseToken : pair.quoteToken;
+      const image = normalizeMediaUri(pair?.info?.imageUrl);
+      if (image || token?.name || token?.symbol) {
+        return {
+          name: typeof token?.name === "string" ? token.name.trim() : null,
+          symbol: typeof token?.symbol === "string" ? token.symbol.trim() : null,
+          image
+        };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getTokenMetadata(mint) {
+  const cached = tokenMetadataCache.get(mint);
+  if (cached && Date.now() - cached.createdAt < TOKEN_METADATA_CACHE_MS) return cached.value;
+
   const asset = await heliusRequest(
     "getAsset",
     { id: mint, displayOptions: { showFungible: true } },
@@ -137,12 +178,10 @@ export async function getTokenMetadata(mint) {
 
   let name = asset?.content?.metadata?.name?.trim() || asset?.token_info?.name?.trim() || null;
   let symbol = asset?.content?.metadata?.symbol?.trim() || asset?.token_info?.symbol?.trim() || null;
-  const jsonUri = asset?.content?.json_uri || asset?.content?.links?.json || null;
+  const jsonUri = asset?.content?.json_uri || asset?.content?.links?.json || asset?.content?.metadata?.uri || null;
   const rawPriceUsd = Number(asset?.token_info?.price_info?.price_per_token);
   let image = firstImageCandidate(asset, null);
 
-  // Many fungible tokens expose name/symbol on-chain but keep the image only in
-  // off-chain JSON. Fetch that JSON whenever *any* presentation field is missing.
   let remote = null;
   if (!name || !symbol || !image) remote = await fetchJsonMetadata(jsonUri);
 
@@ -150,11 +189,23 @@ export async function getTokenMetadata(mint) {
   symbol = symbol || (typeof remote?.symbol === "string" ? remote.symbol.trim() : null);
   image = image || firstImageCandidate(asset, remote);
 
-  return {
+  // Helius/Metaplex metadata is authoritative, but some Pump.fun and migrated
+  // tokens have stale or unavailable off-chain artwork. DexScreener is used only
+  // as a presentation fallback so missing artwork does not degrade the dashboard.
+  if (!image || !name || !symbol) {
+    const dex = await getDexScreenerMetadata(mint);
+    name = name || dex?.name || null;
+    symbol = symbol || dex?.symbol || null;
+    image = image || dex?.image || null;
+  }
+
+  const value = {
     mint,
     name,
     symbol,
     image,
     priceUsd: Number.isFinite(rawPriceUsd) && rawPriceUsd > 0 ? rawPriceUsd : null
   };
+  tokenMetadataCache.set(mint, { createdAt: Date.now(), value });
+  return value;
 }
