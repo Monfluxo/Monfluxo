@@ -101,11 +101,12 @@ export async function requestWalletDashboardWithIntelligence(address, options = 
   const dashboard = await requestWalletDashboard(address, options);
   try {
     const extra = await buildBehavioralIntelligence(address, dashboard?.coverage?.historyComplete === true);
-    dashboard.behavior = extra.holdBehavior;
+    // requestWalletDashboard enriches behavior rows with token metadata; do not overwrite them.
+    if (!dashboard.behavior || dashboard.behavior.status === "unavailable") dashboard.behavior = extra.holdBehavior;
     dashboard.intelligence = extra.intelligence;
   } catch (error) {
     console.warn(`Unable to build behavioral intelligence for ${address}: ${error.message}`);
-    dashboard.behavior = {
+    dashboard.behavior = dashboard.behavior || {
       methodology: "purchased_inventory_closed_tokens_v2",
       status: "unavailable",
       sampleSize: 0,
