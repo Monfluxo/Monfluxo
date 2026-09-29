@@ -105,6 +105,7 @@ export async function getTokenMetadata(mint) {
   let name = asset?.content?.metadata?.name?.trim() || asset?.token_info?.name?.trim() || null;
   let symbol = asset?.content?.metadata?.symbol?.trim() || asset?.token_info?.symbol?.trim() || null;
   const jsonUri = asset?.content?.json_uri || asset?.content?.links?.json || null;
+  const rawPriceUsd = Number(asset?.token_info?.price_info?.price_per_token);
 
   if (!name || !symbol) {
     const remote = await fetchJsonMetadata(jsonUri);
@@ -116,6 +117,7 @@ export async function getTokenMetadata(mint) {
     mint,
     name,
     symbol,
-    image: asset?.content?.links?.image || null
+    image: asset?.content?.links?.image || null,
+    priceUsd: Number.isFinite(rawPriceUsd) && rawPriceUsd > 0 ? rawPriceUsd : null
   };
 }
