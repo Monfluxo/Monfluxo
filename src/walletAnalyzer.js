@@ -10,6 +10,7 @@ import {
 import { buildPositions, isLowConfidenceDustTrade } from "./positionEngine.js";
 
 const MIN_RANKED_TRADE_COST_SOL = Number(process.env.MIN_RANKED_TRADE_COST_SOL || 0.005);
+const MIN_OPEN_POSITION_VALUE_SOL = Number(process.env.MIN_OPEN_POSITION_VALUE_SOL || 0.005);
 const POSITION_EPSILON = 0.000000001;
 const DASHBOARD_SAMPLE_SIZE = 6;
 
@@ -89,8 +90,21 @@ function round(value, decimals = 6) {
   return Math.round(value * factor) / factor;
 }
 
-function hasOpenPurchasedInventory(position) {
+function rawPurchasedInventoryOpen(position) {
   return Number(position?.purchasedTokensRemaining || 0) > POSITION_EPSILON;
+}
+
+function estimatedOpenPositionValueSol(position) {
+  if (!rawPurchasedInventoryOpen(position)) return 0;
+  const tokens = Number(position?.purchasedTokensRemaining || 0);
+  const lastPrice = Number(position?.lastPriceSol || 0);
+  if (Number.isFinite(lastPrice) && lastPrice > 0) return tokens * lastPrice;
+  const remainingCost = Number(position?.remainingCostSol || 0);
+  return Number.isFinite(remainingCost) && remainingCost > 0 ? remainingCost : 0;
+}
+
+function hasOpenPurchasedInventory(position) {
+  return rawPurchasedInventoryOpen(position) && estimatedOpenPositionValueSol(position) >= MIN_OPEN_POSITION_VALUE_SOL;
 }
 
 function isClosedTradingLifecycle(position) {
@@ -126,6 +140,8 @@ function summarizePosition(position) {
     rewardTokensSold: round(position.rewardTokensSold || 0),
     knownCostRemainingTokens: round(position.knownCostRemainingTokens || 0),
     unknownCostRemainingTokens: round(position.unknownCostRemainingTokens || 0),
+    remainingCostSol: round(position.remainingCostSol || 0),
+    positionValueSol: round(estimatedOpenPositionValueSol(position), 8),
     solSpent: round(position.solSpent),
     solReceived: round(position.solReceived),
     realizedPnlSol: round(position.realizedPnl),
@@ -383,9 +399,10 @@ export async function analyzeWallet(address, options = {}) {
     .sort((a, b) => b.proceedsSol - a.proceedsSol);
   const topExternalSales = externalSales.slice(0, 10).map(summarizeExternalSale);
 
+  const dustOpenTokens = positionList.filter((position) => rawPurchasedInventoryOpen(position) && !hasOpenPurchasedInventory(position));
   const openTokens = positionList
     .filter(hasOpenPurchasedInventory)
-    .sort((a, b) => b.totalPnl - a.totalPnl);
+    .sort((a, b) => estimatedOpenPositionValueSol(b) - estimatedOpenPositionValueSol(a));
   const matchedPositions = winningPositions + losingPositions;
   const topPositions = openTokens.slice(0, DASHBOARD_SAMPLE_SIZE).map(summarizePosition);
   const solFundingTotal = fundingEvents
@@ -445,11 +462,13 @@ export async function analyzeWallet(address, options = {}) {
     unmatchedSellProceedsSol: round(unmatchedSellProceedsSol),
     openPositions,
     closedPositions,
+    suppressedDustOpenPositions: dustOpenTokens.length,
+    openPositionMinValueSol: MIN_OPEN_POSITION_VALUE_SOL,
     winningPositions,
     losingPositions,
     winRate: matchedPositions > 0 ? round((winningPositions / matchedPositions) * 100, 2) : null,
     openExposureCostSol: round(openTokens.reduce((sum, position) => sum + position.remainingCostSol, 0)),
-    openMarkedValueSol: round(openTokens.reduce((sum, position) => sum + position.unrealizedValueSol, 0)),
+    openMarkedValueSol: round(openTokens.reduce((sum, position) => sum + estimatedOpenPositionValueSol(position), 0)),
     unknownCostMarkedValueSol: round(openTokens.reduce((sum, position) => sum + position.unknownCostMarkedValueSol, 0)),
     best: openTokens.length ? summarizePosition(openTokens[0]) : null,
     worst: openTokens.length ? summarizePosition(openTokens[openTokens.length - 1]) : null,
