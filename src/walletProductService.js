@@ -18,16 +18,23 @@ function coverageFromState(state) {
   };
 }
 
+function mintForEntity(entity) {
+  if (entity?.tokenMint) return entity.tokenMint;
+  if (entity?.assetType === "TOKEN") return entity.assetId || null;
+  return null;
+}
+
 async function enrichTokenMetadata(dashboard) {
   const entities = [
     ...(dashboard?.positions?.top || []),
     dashboard?.positions?.best,
     dashboard?.positions?.worst,
     ...(dashboard?.trades?.best || []),
-    ...(dashboard?.trades?.worst || [])
+    ...(dashboard?.trades?.worst || []),
+    ...(dashboard?.funding?.events || [])
   ].filter(Boolean);
 
-  const mints = [...new Set(entities.map((entity) => entity.tokenMint).filter(Boolean))];
+  const mints = [...new Set(entities.map(mintForEntity).filter(Boolean))];
   const metadataEntries = await Promise.all(
     mints.map(async (mint) => {
       try {
@@ -41,7 +48,9 @@ async function enrichTokenMetadata(dashboard) {
 
   const metadataByMint = new Map(metadataEntries);
   for (const entity of entities) {
-    const metadata = metadataByMint.get(entity.tokenMint);
+    const mint = mintForEntity(entity);
+    if (!mint) continue;
+    const metadata = metadataByMint.get(mint);
     entity.tokenName = metadata?.name || null;
     entity.tokenSymbol = metadata?.symbol || null;
     entity.tokenImage = metadata?.image || null;
