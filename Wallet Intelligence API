@@ -1,0 +1,210 @@
+# MONFLUXO — Wallet Intelligence API
+
+## Endpoint
+
+```http
+GET /api/wallet/:address
+```
+
+The endpoint returns the stable frontend contract `wallet-intelligence.v1`.
+
+It performs a Fast Scan through `requestWalletIntelligence()`, returns immediately with explicit historical coverage, and queues progressive historical indexing when the wallet is not fully indexed.
+
+## Response model
+
+```json
+{
+  "schemaVersion": "wallet-intelligence.v1",
+  "wallet": "...",
+  "status": "ready | indexing",
+  "metricsStatus": "final | partial",
+  "overview": {},
+  "coverage": {},
+  "performance": {},
+  "activity": {},
+  "rewards": {},
+  "positions": {},
+  "accounting": {},
+  "confidence": {},
+  "indexing": {},
+  "generatedAt": "..."
+}
+```
+
+## Product semantics
+
+### status
+
+- `ready`: historical indexing is complete.
+- `indexing`: MONFLUXO has usable recent/indexed intelligence, but historical coverage is still expanding.
+
+### metricsStatus
+
+- `final`: metrics were calculated against complete historical coverage.
+- `partial`: metrics may change as older transactions are indexed.
+
+The frontend must always display this state near PnL/performance metrics.
+
+## overview
+
+High-level wallet activity:
+
+- `uniqueTokens`
+- `tradesAnalyzed`
+- `transfersAnalyzed`
+- `buyCount`
+- `sellCount`
+- `totalVolumeSol`
+- `feesSol`
+- `openPositions`
+- `closedPositions`
+- `winRatePct`
+
+## coverage
+
+Explains how much wallet history MONFLUXO has indexed:
+
+- `status`
+- `historyComplete`
+- `backfillPending`
+- `pagesScanned`
+- `oldestIndexedAt`
+- `newestIndexedAt`
+- `lastSyncedAt`
+- `backfillUpdatedAt`
+
+The dashboard should expose coverage rather than imply all metrics are complete.
+
+## performance
+
+Contains deterministic accounting output:
+
+- `realizedPnlSol`
+- `unrealizedPnlSol`
+- `totalPnlSol`
+- `grossBuyVolumeSol`
+- `grossSellVolumeSol`
+- `pnlCoverage`
+
+### pnlCoverage
+
+`pnlCoverage.status` is independent from historical `metricsStatus`.
+
+A wallet can have complete historical indexing but still have partial PnL coverage because transferred-in tokens may have unknown acquisition cost.
+
+When `pnlCoverage.status = partial`, the UI should prefer language such as:
+
+> Known-cost PnL
+
+and separately show:
+
+> Unknown-cost sell proceeds
+
+Do not present total PnL as fully definitive when unknown-cost inventory exists.
+
+## activity
+
+Contains transfer and parser-quality context:
+
+- `transferInCount`
+- `transferOutCount`
+- `transferTokenCount`
+- `dexCounts`
+- `lowConfidenceTradesExcluded`
+- `lowConfidenceVolumeSolExcluded`
+
+Low-confidence events remain preserved in MONFLUXO's indexed event data but are excluded from accounting when they match known dust/rent-like false-swap patterns.
+
+## rewards
+
+Creator reward intelligence:
+
+- `creatorRewardCount`
+- `creatorRewardTokenAmount`
+- `byMint`
+
+Creator rewards are not treated as BUY trades and enter inventory with unknown cost basis.
+
+## positions
+
+- `top`
+- `best`
+- `worst`
+
+Each normalized position contains state, trade counts, inventory, known accounting output, unknown-cost proceeds, unmatched inventory and holding-time information.
+
+## accounting
+
+Diagnostic accounting integrity:
+
+- `unmatchedSoldTokens`
+- `unmatchedSellProceedsSol`
+- `unknownCostSoldTokens`
+- `unknownCostSellProceedsSol`
+- `unknownCostRemainingTokens`
+
+MONFLUXO distinguishes:
+
+- **unmatched**: inventory origin is unexplained and may indicate an unsupported/misclassified event.
+- **unknown cost**: inventory origin is known but acquisition cost is unavailable.
+
+These categories must never be combined in the UI.
+
+## confidence
+
+```json
+{
+  "level": "high | partial | review",
+  "label": "...",
+  "reason": "..."
+}
+```
+
+- `high`: full historical coverage and no material unmatched sell proceeds.
+- `partial`: historical indexing is still in progress.
+- `review`: complete history but material unmatched sell proceeds remain.
+
+Confidence describes reconstruction/accounting confidence, not investment quality or expected future performance.
+
+## indexing
+
+Contains the persistent background indexing state.
+
+```json
+{
+  "job": {},
+  "refreshRecommended": true
+}
+```
+
+The frontend may poll the same wallet endpoint while `refreshRecommended = true`.
+
+The request itself must never wait for an unlimited historical Helius backfill.
+
+## Local development
+
+Start the API:
+
+```bash
+npm run api
+```
+
+Health check:
+
+```http
+GET /health
+```
+
+Wallet request:
+
+```http
+GET /api/wallet/<SOLANA_WALLET_ADDRESS>
+```
+
+Run the index worker separately:
+
+```bash
+npm run worker:index
+```
+
+This keeps public request latency separated from historical indexing work.
