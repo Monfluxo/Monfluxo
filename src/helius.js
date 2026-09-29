@@ -84,15 +84,48 @@ export async function getTransaction(signature) {
   );
 }
 
+function normalizeMediaUri(uri) {
+  if (typeof uri !== "string" || !uri.trim()) return null;
+  const value = uri.trim();
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^ipfs:\/\//i.test(value)) {
+    return `https://ipfs.io/ipfs/${value.replace(/^ipfs:\/\//i, "").replace(/^ipfs\//i, "")}`;
+  }
+  if (/^ar:\/\//i.test(value)) {
+    return `https://arweave.net/${value.replace(/^ar:\/\//i, "")}`;
+  }
+  return null;
+}
+
 async function fetchJsonMetadata(uri) {
-  if (!uri || !/^https?:\/\//i.test(uri)) return null;
+  const resolved = normalizeMediaUri(uri);
+  if (!resolved) return null;
   try {
-    const response = await fetch(uri, { signal: AbortSignal.timeout(3500) });
+    const response = await fetch(resolved, { signal: AbortSignal.timeout(3500) });
     if (!response.ok) return null;
     return await response.json();
   } catch {
     return null;
   }
+}
+
+function firstImageCandidate(asset, remote) {
+  const assetFiles = Array.isArray(asset?.content?.files) ? asset.content.files : [];
+  const remoteFiles = Array.isArray(remote?.properties?.files) ? remote.properties.files : [];
+  const candidates = [
+    asset?.content?.links?.image,
+    assetFiles.find((file) => String(file?.mime || file?.type || "").startsWith("image/"))?.uri,
+    assetFiles[0]?.uri,
+    remote?.image,
+    remote?.image_url,
+    remoteFiles.find((file) => String(file?.type || file?.mime || "").startsWith("image/"))?.uri,
+    remoteFiles[0]?.uri
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeMediaUri(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
 }
 
 export async function getTokenMetadata(mint) {
@@ -106,18 +139,22 @@ export async function getTokenMetadata(mint) {
   let symbol = asset?.content?.metadata?.symbol?.trim() || asset?.token_info?.symbol?.trim() || null;
   const jsonUri = asset?.content?.json_uri || asset?.content?.links?.json || null;
   const rawPriceUsd = Number(asset?.token_info?.price_info?.price_per_token);
+  let image = firstImageCandidate(asset, null);
 
-  if (!name || !symbol) {
-    const remote = await fetchJsonMetadata(jsonUri);
-    name = name || (typeof remote?.name === "string" ? remote.name.trim() : null);
-    symbol = symbol || (typeof remote?.symbol === "string" ? remote.symbol.trim() : null);
-  }
+  // Many fungible tokens expose name/symbol on-chain but keep the image only in
+  // off-chain JSON. Fetch that JSON whenever *any* presentation field is missing.
+  let remote = null;
+  if (!name || !symbol || !image) remote = await fetchJsonMetadata(jsonUri);
+
+  name = name || (typeof remote?.name === "string" ? remote.name.trim() : null);
+  symbol = symbol || (typeof remote?.symbol === "string" ? remote.symbol.trim() : null);
+  image = image || firstImageCandidate(asset, remote);
 
   return {
     mint,
     name,
     symbol,
-    image: asset?.content?.links?.image || null,
+    image,
     priceUsd: Number.isFinite(rawPriceUsd) && rawPriceUsd > 0 ? rawPriceUsd : null
   };
 }
