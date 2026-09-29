@@ -40,6 +40,7 @@ export async function assertEventModelV2Schema() {
     await request("wallet_trades?select=wallet_address,signature,event_index,instruction_index,slot&limit=1");
     await request("wallet_transfers?select=wallet_address,signature,event_index,instruction_index,token_mint,token_amount,slot&limit=1");
     await request("wallet_rewards?select=wallet_address,signature,instruction_index,slot&limit=1");
+    await request("wallet_funding_events?select=wallet_address,signature,event_index,asset_type,asset_id,amount&limit=1");
   } catch (error) {
     throw new Error(
       `Event Model v2 schema is not ready. Apply the latest migrations in Supabase before reindexing. ${error.message}`
@@ -121,6 +122,15 @@ export async function upsertRewards(rows) {
   });
 }
 
+export async function upsertFundingEvents(rows) {
+  if (!rows.length) return;
+  return request("wallet_funding_events?on_conflict=wallet_address,signature,event_index,asset_id", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(rows)
+  });
+}
+
 async function deleteBySignatures(table, address, signatures) {
   if (!signatures.length) return;
   const encoded = signatures.map(queryEncode).join(",");
@@ -136,7 +146,8 @@ export async function replaceWalletEventsForSignatures(address, signatures) {
   await Promise.all([
     deleteBySignatures("wallet_trades", address, unique),
     deleteBySignatures("wallet_transfers", address, unique),
-    deleteBySignatures("wallet_rewards", address, unique)
+    deleteBySignatures("wallet_rewards", address, unique),
+    deleteBySignatures("wallet_funding_events", address, unique)
   ]);
 }
 
@@ -151,6 +162,13 @@ export async function getWalletTransferPage(address, limit = 1000, offset = 0) {
   const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
   return request(
     `wallet_transfers?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.asc,slot.asc.nullslast,event_index.asc,signature.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+  );
+}
+
+export async function getWalletFundingPage(address, limit = 100, offset = 0) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  return request(
+    `wallet_funding_events?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.desc,slot.desc.nullslast,event_index.desc,signature.desc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
   );
 }
 
