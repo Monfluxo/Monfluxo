@@ -15,7 +15,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const maxJobs = positiveInt(process.env.INDEX_WORKER_MAX_JOBS, 10);
+const maxJobsPerCycle = positiveInt(process.env.INDEX_WORKER_MAX_JOBS, 10);
 const batchPages = positiveInt(process.env.INDEX_WORKER_BATCH_PAGES, 20);
 const maxBatchesPerJob = positiveInt(process.env.INDEX_WORKER_MAX_BATCHES, 25);
 const maxRuntimeMs = positiveInt(
@@ -23,6 +23,9 @@ const maxRuntimeMs = positiveInt(
   10 * 60 * 1000
 );
 const pauseMs = Math.max(0, Number(process.env.INDEX_WORKER_PAUSE_MS || 500));
+const idlePollMs = positiveInt(process.env.INDEX_WORKER_IDLE_POLL_MS, 3000);
+const cyclePauseMs = positiveInt(process.env.INDEX_WORKER_CYCLE_PAUSE_MS, 750);
+const runOnce = process.env.INDEX_WORKER_ONCE === "true";
 const storeRaw = process.env.INDEX_WORKER_STORE_RAW === "true";
 
 async function processJob(job) {
@@ -30,6 +33,8 @@ async function processJob(job) {
   const startedAt = Date.now();
   let batches = 0;
   let stopReason = "unknown";
+
+  console.log(`[wallet-index] processing ${wallet} (attempt ${job.attempts || 1})`);
 
   try {
     while (batches < maxBatchesPerJob) {
@@ -69,6 +74,7 @@ async function processJob(job) {
         last_error: null
       });
 
+      console.log(`[wallet-index] complete ${wallet} in ${batches} batch(es)`);
       return {
         wallet,
         status: "complete",
@@ -84,8 +90,8 @@ async function processJob(job) {
       );
     }
 
-    // Budget exhaustion is normal for very large wallets. Requeue the same
-    // persistent job so another worker pass resumes from the saved cursor.
+    // Budget exhaustion is expected for large wallets. Requeue the persistent
+    // job and allow the next queue cycle to resume from the saved cursor.
     await updateWalletIndexJob(wallet, {
       status: "queued",
       started_at: null,
@@ -93,6 +99,7 @@ async function processJob(job) {
       last_error: null
     });
 
+    console.log(`[wallet-index] requeued ${wallet} (${stopReason}, ${batches} batches)`);
     return {
       wallet,
       status: "queued",
@@ -105,21 +112,21 @@ async function processJob(job) {
       status: "error",
       last_error: error.message
     });
+    console.error(`[wallet-index] error ${wallet}: ${error.message}`);
     throw error;
   }
 }
 
-let processed = 0;
-const results = [];
+async function runCycle() {
+  let processed = 0;
+  const results = [];
 
-try {
-  while (processed < maxJobs) {
+  while (processed < maxJobsPerCycle) {
     const job = await claimWalletIndexJob();
     if (!job) break;
 
     try {
-      const result = await processJob(job);
-      results.push(result);
+      results.push(await processJob(job));
     } catch (error) {
       results.push({
         wallet: job.wallet_address,
@@ -131,12 +138,31 @@ try {
     processed++;
   }
 
-  console.log(JSON.stringify({
-    worker: "wallet-index",
-    processed,
-    results
-  }, null, 2));
-} catch (error) {
+  return { processed, results };
+}
+
+async function main() {
+  console.log(
+    `[wallet-index] worker started; polling every ${idlePollMs}ms` +
+    (runOnce ? " (one-shot mode)" : "")
+  );
+
+  while (true) {
+    const cycle = await runCycle();
+
+    if (cycle.processed > 0) {
+      console.log(JSON.stringify({
+        worker: "wallet-index",
+        ...cycle
+      }, null, 2));
+    }
+
+    if (runOnce) break;
+    await sleep(cycle.processed === 0 ? idlePollMs : cyclePauseMs);
+  }
+}
+
+main().catch((error) => {
   console.error("Index queue worker failed:", error.message);
   process.exit(1);
-}
+});
