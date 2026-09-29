@@ -9,8 +9,7 @@ function coverageFromState(state) {
   return {
     status: historyComplete ? "complete" : "indexing",
     historyComplete,
-    backfillPending:
-      !historyComplete && Boolean(state?.backfill_pagination_token),
+    backfillPending: !historyComplete && Boolean(state?.backfill_pagination_token),
     pagesScanned: Number(state?.pages_scanned || 0),
     oldestIndexedAt: state?.oldest_block_time || null,
     newestIndexedAt: state?.newest_block_time || null,
@@ -19,14 +18,16 @@ function coverageFromState(state) {
   };
 }
 
-async function enrichPositionMetadata(dashboard) {
-  const positions = [
+async function enrichTokenMetadata(dashboard) {
+  const entities = [
     ...(dashboard?.positions?.top || []),
     dashboard?.positions?.best,
-    dashboard?.positions?.worst
+    dashboard?.positions?.worst,
+    ...(dashboard?.trades?.best || []),
+    ...(dashboard?.trades?.worst || [])
   ].filter(Boolean);
 
-  const mints = [...new Set(positions.map((position) => position.tokenMint).filter(Boolean))];
+  const mints = [...new Set(entities.map((entity) => entity.tokenMint).filter(Boolean))];
   const metadataEntries = await Promise.all(
     mints.map(async (mint) => {
       try {
@@ -39,11 +40,11 @@ async function enrichPositionMetadata(dashboard) {
   );
 
   const metadataByMint = new Map(metadataEntries);
-
-  for (const position of positions) {
-    const metadata = metadataByMint.get(position.tokenMint);
-    position.tokenName = metadata?.name || null;
-    position.tokenSymbol = metadata?.symbol || null;
+  for (const entity of entities) {
+    const metadata = metadataByMint.get(entity.tokenMint);
+    entity.tokenName = metadata?.name || null;
+    entity.tokenSymbol = metadata?.symbol || null;
+    entity.tokenImage = metadata?.image || null;
   }
 
   return dashboard;
@@ -51,9 +52,6 @@ async function enrichPositionMetadata(dashboard) {
 
 export async function requestWalletIntelligence(address, options = {}) {
   const priority = Number(options.priority || 100);
-
-  // Fast path: ingest only a small recent window and return immediately with
-  // explicit coverage. Historical indexing is queued separately.
   const analysis = await analyzeWallet(address, { mode: "quick" });
   const state = await getSyncState(address);
   const coverage = coverageFromState(state);
@@ -84,7 +82,7 @@ export async function requestWalletIntelligence(address, options = {}) {
 export async function requestWalletDashboard(address, options = {}) {
   const result = await requestWalletIntelligence(address, options);
   const dashboard = buildWalletDashboardResponse(result);
-  return enrichPositionMetadata(dashboard);
+  return enrichTokenMetadata(dashboard);
 }
 
 if (process.argv[1]?.endsWith("walletProductService.js")) {
