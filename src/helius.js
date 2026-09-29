@@ -141,13 +141,22 @@ async function fetchDexJson(url) {
 
 async function getDexScreenerMetadata(mint) {
   const encoded = encodeURIComponent(mint);
-  const pairPayload = await fetchDexJson(`https://api.dexscreener.com/token-pairs/v1/solana/${encoded}`);
-  const pairRows = Array.isArray(pairPayload) ? pairPayload : Array.isArray(pairPayload?.pairs) ? pairPayload.pairs : [];
-  let result = dexMetadataFromPair(selectDexPair(pairRows, mint), mint);
+
+  // Canonical DexScreener token lookup. This response includes pair.info.imageUrl
+  // and is more reliable for artwork than token-pairs on older/migrated tokens.
+  const tokenPayload = await fetchDexJson(`https://api.dexscreener.com/latest/dex/tokens/${encoded}`);
+  const tokenRows = Array.isArray(tokenPayload?.pairs)
+    ? tokenPayload.pairs.filter((pair) => !pair?.chainId || pair.chainId === "solana")
+    : [];
+  let result = dexMetadataFromPair(selectDexPair(tokenRows, mint), mint);
   if (result?.image) return result;
 
-  // Some older/migrated Solana tokens do not resolve through token-pairs but do
-  // appear in DexScreener's search index. Search is therefore the final artwork fallback.
+  const pairPayload = await fetchDexJson(`https://api.dexscreener.com/token-pairs/v1/solana/${encoded}`);
+  const pairRows = Array.isArray(pairPayload) ? pairPayload : Array.isArray(pairPayload?.pairs) ? pairPayload.pairs : [];
+  const pairResult = dexMetadataFromPair(selectDexPair(pairRows, mint), mint);
+  result = result || pairResult;
+  if (pairResult?.image) return pairResult;
+
   const searchPayload = await fetchDexJson(`https://api.dexscreener.com/latest/dex/search?q=${encoded}`);
   const searchRows = Array.isArray(searchPayload?.pairs) ? searchPayload.pairs.filter((pair) => pair?.chainId === "solana") : [];
   const searched = dexMetadataFromPair(selectDexPair(searchRows, mint), mint);
@@ -165,21 +174,28 @@ export async function getTokenMetadata(mint) {
   const jsonUri = asset?.content?.json_uri || asset?.content?.links?.json || asset?.content?.metadata?.uri || null;
   const rawPriceUsd = Number(asset?.token_info?.price_info?.price_per_token);
   let image = firstImageCandidate(asset, null);
+  let imageSource = image ? "helius" : null;
 
   let remote = null;
   if (!name || !symbol || !image) remote = await fetchJsonMetadata(jsonUri);
   name = name || (typeof remote?.name === "string" ? remote.name.trim() : null);
   symbol = symbol || (typeof remote?.symbol === "string" ? remote.symbol.trim() : null);
-  image = image || firstImageCandidate(asset, remote);
+  if (!image) {
+    image = firstImageCandidate(asset, remote);
+    if (image) imageSource = "offchain_metadata";
+  }
 
   if (!image || !name || !symbol) {
     const dex = await getDexScreenerMetadata(mint);
     name = name || dex?.name || null;
     symbol = symbol || dex?.symbol || null;
-    image = image || dex?.image || null;
+    if (!image && dex?.image) {
+      image = dex.image;
+      imageSource = "dexscreener";
+    }
   }
 
-  const value = { mint, name, symbol, image, priceUsd: Number.isFinite(rawPriceUsd) && rawPriceUsd > 0 ? rawPriceUsd : null };
+  const value = { mint, name, symbol, image, imageSource, priceUsd: Number.isFinite(rawPriceUsd) && rawPriceUsd > 0 ? rawPriceUsd : null };
   tokenMetadataCache.set(mint, { createdAt: Date.now(), value });
   return value;
 }
