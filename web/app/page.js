@@ -7,9 +7,7 @@ const DEFAULT_WALLET = "6DQAGJT7VZPVBsuG4kn3AvpyHCEi7B2RFFvMZdbqQqqP";
 function fmt(value, digits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: digits
-  }).format(n);
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(n);
 }
 
 function sol(value, digits = 2) {
@@ -24,13 +22,86 @@ function shorten(value, left = 6, right = 5) {
   return `${value.slice(0, left)}…${value.slice(-right)}`;
 }
 
-function tokenLabel(position) {
-  if (position?.tokenName && position?.tokenSymbol) {
-    return `${position.tokenName} (${position.tokenSymbol})`;
-  }
-  if (position?.tokenName) return position.tokenName;
-  if (position?.tokenSymbol) return position.tokenSymbol;
-  return shorten(position?.tokenMint, 7, 6);
+function tokenInitials(position) {
+  const source = position?.tokenSymbol || position?.tokenName || "?";
+  return source.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "?";
+}
+
+function BrandMark({ compact = false }) {
+  return (
+    <div className={`brand-mark ${compact ? "brand-mark-compact" : ""}`} aria-label="Monfluxo">
+      <svg viewBox="0 0 120 82" role="img" aria-hidden="true">
+        <defs>
+          <linearGradient id="monfluxoGradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#18f4df" />
+            <stop offset="52%" stopColor="#10b8ff" />
+            <stop offset="100%" stopColor="#315dff" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M8 70 C15 70 18 66 22 58 L39 24 C44 14 53 14 59 23 L69 38 C72 43 76 43 80 38 L91 24 C98 15 107 16 112 27 L116 36"
+          fill="none"
+          stroke="url(#monfluxoGradient)"
+          strokeWidth="17"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M18 69 C25 69 29 64 33 56 L46 31 C50 23 57 23 62 31 L80 61 C84 68 91 69 98 69"
+          fill="none"
+          stroke="url(#monfluxoGradient)"
+          strokeWidth="17"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function FlowBackground() {
+  return (
+    <div className="flow-stage" aria-hidden="true">
+      <div className="flow-orb flow-orb-a" />
+      <div className="flow-orb flow-orb-b" />
+      <svg className="flow-svg flow-svg-a" viewBox="0 0 1600 900" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="flowGradientA" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#14f1df" stopOpacity="0" />
+            <stop offset="24%" stopColor="#14f1df" stopOpacity=".9" />
+            <stop offset="72%" stopColor="#1688ff" stopOpacity=".9" />
+            <stop offset="100%" stopColor="#315dff" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <path
+            key={i}
+            d={`M-120 ${650 + i * 18} C 300 ${510 - i * 20}, 520 ${780 - i * 25}, 900 ${625 - i * 18} S 1350 ${470 - i * 14}, 1740 ${540 - i * 22}`}
+            fill="none"
+            stroke="url(#flowGradientA)"
+            strokeWidth={i === 2 ? 3 : 1.3}
+            opacity={0.65 - i * 0.06}
+          />
+        ))}
+      </svg>
+      <svg className="flow-svg flow-svg-b" viewBox="0 0 1600 900" preserveAspectRatio="none">
+        {[0, 1, 2, 3].map((i) => (
+          <path
+            key={i}
+            d={`M-100 ${270 + i * 34} C 330 ${100 + i * 20}, 650 ${500 - i * 12}, 980 ${300 + i * 26} S 1350 ${130 + i * 30}, 1700 ${250 + i * 22}`}
+            fill="none"
+            stroke="rgba(26,142,255,.2)"
+            strokeWidth="1"
+          />
+        ))}
+      </svg>
+      <div className="flow-particles">
+        {Array.from({ length: 14 }).map((_, i) => (
+          <span key={i} style={{ "--i": i }} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function StatusPill({ tone = "neutral", children }) {
@@ -62,6 +133,23 @@ function Section({ title, subtitle, children, action }) {
   );
 }
 
+function TokenCell({ position }) {
+  return (
+    <div className="token-cell">
+      <div className="token-avatar">{tokenInitials(position)}</div>
+      <div className="token-copy">
+        <div className="token-primary">
+          {position.tokenName || position.tokenSymbol || "Unknown token"}
+          {position.tokenSymbol && position.tokenName ? <span>${position.tokenSymbol}</span> : null}
+        </div>
+        <div className="token-mint mono" title={position.tokenMint || ""}>
+          {shorten(position.tokenMint, 8, 6)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PositionTable({ positions = [] }) {
   if (!positions.length) return <div className="empty">No position data available.</div>;
 
@@ -71,21 +159,21 @@ function PositionTable({ positions = [] }) {
         <thead>
           <tr>
             <th>Token</th>
-            <th>State</th>
+            <th>Estado</th>
             <th>Trades</th>
             <th>Costo</th>
             <th>Venta</th>
             <th>Utilidad</th>
-            <th>PnL coverage</th>
+            <th>Cobertura PnL</th>
           </tr>
         </thead>
         <tbody>
           {positions.map((position) => (
             <tr key={`${position.tokenMint}-${position.state}`}>
-              <td>{tokenLabel(position)}</td>
+              <td><TokenCell position={position} /></td>
               <td>
                 <StatusPill tone={position.state === "open" ? "warning" : "neutral"}>
-                  {position.state}
+                  {position.state === "open" ? "abierta" : "cerrada"}
                 </StatusPill>
               </td>
               <td>{fmt(position.trades, 0)}</td>
@@ -96,7 +184,7 @@ function PositionTable({ positions = [] }) {
               </td>
               <td>
                 <StatusPill tone={position.pnlComplete ? "success" : "warning"}>
-                  {position.pnlComplete ? "complete" : "partial"}
+                  {position.pnlComplete ? "completa" : "parcial"}
                 </StatusPill>
               </td>
             </tr>
@@ -120,9 +208,7 @@ export default function Home() {
     setError("");
 
     try {
-      const response = await fetch(`/api/wallet/${encodeURIComponent(address)}`, {
-        cache: "no-store"
-      });
+      const response = await fetch(`/api/wallet/${encodeURIComponent(address)}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.message || "Unable to load wallet intelligence.");
       setData(payload);
@@ -134,9 +220,7 @@ export default function Home() {
     }
   }
 
-  useEffect(() => {
-    loadWallet(DEFAULT_WALLET);
-  }, []);
+  useEffect(() => { loadWallet(DEFAULT_WALLET); }, []);
 
   useEffect(() => {
     if (!data?.indexing?.refreshRecommended || !wallet) return;
@@ -164,9 +248,11 @@ export default function Home() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
+      <FlowBackground />
+
+      <header className="topbar glass-surface">
         <div className="brand-row">
-          <div className="brand-mark">M</div>
+          <BrandMark compact />
           <div>
             <div className="brand-name">MONFLUXO</div>
             <div className="brand-subtitle">Wallet Intelligence</div>
@@ -174,18 +260,15 @@ export default function Home() {
         </div>
         <div className="topbar-right">
           <StatusPill tone="neutral">Solana</StatusPill>
-          {data ? (
-            <StatusPill tone={data.status === "ready" ? "success" : "warning"}>
-              {data.status}
-            </StatusPill>
-          ) : null}
+          {data ? <StatusPill tone={data.status === "ready" ? "success" : "warning"}>{data.status}</StatusPill> : null}
         </div>
       </header>
 
       <div className="content">
-        <section className="hero">
+        <section className="hero glass-surface hero-surface">
+          <div className="hero-brand-watermark"><BrandMark /></div>
           <div className="eyebrow">ON-CHAIN INTELLIGENCE</div>
-          <h1>Understand the wallet, not just the transactions.</h1>
+          <h1>Understand the wallet.<br /><span>Follow the flow.</span></h1>
           <p>
             Deterministic Solana wallet reconstruction with explicit historical coverage,
             PnL confidence and accounting integrity.
@@ -207,26 +290,19 @@ export default function Home() {
 
         {data ? (
           <>
-            <div className="wallet-strip">
+            <div className="wallet-strip glass-surface">
               <div>
                 <div className="strip-label">Wallet</div>
                 <div className="wallet-address mono">{data.wallet}</div>
               </div>
               <div className="strip-pills">
-                <StatusPill tone={data.metricsStatus === "final" ? "success" : "warning"}>
-                  {data.metricsStatus} metrics
-                </StatusPill>
+                <StatusPill tone={data.metricsStatus === "final" ? "success" : "warning"}>{data.metricsStatus} metrics</StatusPill>
                 <StatusPill tone={confidenceTone}>{data.confidence?.label}</StatusPill>
               </div>
             </div>
 
             <div className="metric-grid">
-              <MetricCard
-                label="Known-cost PnL"
-                value={sol(performance.totalPnlSol)}
-                hint={performance.pnlCoverage?.complete ? "Complete cost basis" : "Partial cost-basis coverage"}
-                tone={Number(performance.totalPnlSol) >= 0 ? "positive" : "negative"}
-              />
+              <MetricCard label="Known-cost PnL" value={sol(performance.totalPnlSol)} hint={performance.pnlCoverage?.complete ? "Complete cost basis" : "Partial cost-basis coverage"} tone={Number(performance.totalPnlSol) >= 0 ? "positive" : "negative"} />
               <MetricCard label="Total volume" value={sol(overview.totalVolumeSol)} hint={`${fmt(overview.tradesAnalyzed, 0)} analyzed trades`} />
               <MetricCard label="Win rate" value={`${fmt(overview.winRatePct)}%`} hint={`${fmt(overview.closedPositions, 0)} closed positions`} />
               <MetricCard label="Fees" value={sol(overview.feesSol, 4)} hint="Observed trading fees" />
@@ -235,14 +311,8 @@ export default function Home() {
             <div className="two-col">
               <Section title="Historical coverage" subtitle="How much of the wallet MONFLUXO has indexed.">
                 <div className="coverage-status">
-                  <StatusPill tone={coverage.historyComplete ? "success" : "warning"}>
-                    {coverage.historyComplete ? "complete" : "indexing"}
-                  </StatusPill>
-                  <div className="coverage-copy">
-                    {coverage.historyComplete
-                      ? "Full indexed history is available for this wallet."
-                      : "Older activity is still being indexed in the background."}
-                  </div>
+                  <StatusPill tone={coverage.historyComplete ? "success" : "warning"}>{coverage.historyComplete ? "complete" : "indexing"}</StatusPill>
+                  <div className="coverage-copy">{coverage.historyComplete ? "Full indexed history is available for this wallet." : "Older activity is still being indexed in the background."}</div>
                 </div>
                 <div className="detail-grid">
                   <div><span>Pages scanned</span><strong>{fmt(coverage.pagesScanned, 0)}</strong></div>
@@ -266,11 +336,7 @@ export default function Home() {
               </Section>
             </div>
 
-            <Section
-              title="Top positions"
-              subtitle="Normalized positions from deterministic FIFO inventory accounting."
-              action={<StatusPill tone={performance.pnlCoverage?.complete ? "success" : "warning"}>{performance.pnlCoverage?.status || "partial"} PnL coverage</StatusPill>}
-            >
+            <Section title="Top positions" subtitle="Normalized positions from deterministic FIFO inventory accounting." action={<StatusPill tone={performance.pnlCoverage?.complete ? "success" : "warning"}>{performance.pnlCoverage?.status || "partial"} PnL coverage</StatusPill>}>
               <PositionTable positions={data.positions?.top || []} />
             </Section>
 
