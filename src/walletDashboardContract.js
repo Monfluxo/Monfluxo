@@ -92,6 +92,7 @@ function normalizeTrade(trade) {
     signature: trade.signature || null,
     blockTime: trade.blockTime ?? null,
     dex: trade.dex || null,
+    realizationCount: n(trade.realizationCount),
     tokensSold: n(trade.tokensSold),
     purchasedTokensSold: n(trade.purchasedTokensSold),
     externalTokensSoldInSameTx: n(trade.externalTokensSoldInSameTx),
@@ -174,7 +175,7 @@ export function buildWalletDashboardResponse(productResult) {
     : [];
 
   return {
-    schemaVersion: "wallet-intelligence.v5",
+    schemaVersion: "wallet-intelligence.v6",
     wallet: productResult?.wallet || null,
     status: productResult?.status || "indexing",
     metricsStatus: productResult?.metricsStatus || "partial",
@@ -183,6 +184,7 @@ export function buildWalletDashboardResponse(productResult) {
       uniqueTokens: n(metrics.uniqueTokens),
       tradesAnalyzed: n(metrics.tradesAnalyzed),
       realizedTradesAnalyzed: n(metrics.realizedTradesAnalyzed),
+      realizedTokensAnalyzed: n(metrics.realizedTokensAnalyzed),
       transfersAnalyzed: n(metrics.transfersAnalyzed),
       buyCount: n(metrics.buyCount),
       sellCount: n(metrics.sellCount),
@@ -221,7 +223,8 @@ export function buildWalletDashboardResponse(productResult) {
       rankedCount: n(metrics.rankedRealizedTradesAnalyzed),
       excludedFromRanking: n(metrics.rankingTradesExcluded),
       minRankedCostSol: n(metrics.rankingMinCostSol),
-      methodology: "ROI and PnL use only tokens acquired through BUY lots. External transfers and rewards are excluded."
+      rankingUnit: metrics.rankingUnit || "TOKEN_LIFETIME_NET",
+      methodology: "Each mint appears once. All purchased-inventory realizations across every buy/sell cycle are aggregated before ranking. External transfers and rewards are excluded from trading ROI."
     },
 
     externalTokens: {
