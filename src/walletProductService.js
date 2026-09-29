@@ -3,6 +3,10 @@ import { getSyncState } from "./db.js";
 import { enqueueWalletIndexJob } from "./indexQueue.js";
 import { buildWalletDashboardResponse } from "./walletDashboardContract.js";
 import { getTokenMetadata } from "./helius.js";
+import { buildClusterIntelligence } from "./clusterEngine.js";
+
+const clusterCache = new Map();
+const CLUSTER_CACHE_MS = Number(process.env.CLUSTER_CACHE_MS || 60_000);
 
 function coverageFromState(state) {
   const historyComplete = state?.history_complete === true;
@@ -59,6 +63,32 @@ async function enrichTokenMetadata(dashboard) {
   return dashboard;
 }
 
+async function clusterForWallet(address) {
+  const cached = clusterCache.get(address);
+  if (cached && Date.now() - cached.createdAt < CLUSTER_CACHE_MS) {
+    return cached.value;
+  }
+
+  try {
+    const value = await buildClusterIntelligence(address);
+    clusterCache.set(address, { createdAt: Date.now(), value });
+    return value;
+  } catch (error) {
+    console.warn(`Unable to build cluster intelligence for ${address}: ${error.message}`);
+    return {
+      methodology: "relationship_score_v1",
+      status: "unavailable",
+      candidateWallets: 0,
+      analyzedCandidateWallets: 0,
+      likelyRelatedWallets: 0,
+      strongestScore: 0,
+      members: [],
+      relationships: [],
+      disclaimer: "Cluster intelligence is temporarily unavailable. Relationship scores never establish human identity or ownership."
+    };
+  }
+}
+
 export async function requestWalletIntelligence(address, options = {}) {
   const priority = Number(options.priority || 100);
   const analysis = await analyzeWallet(address, { mode: "quick" });
@@ -91,7 +121,12 @@ export async function requestWalletIntelligence(address, options = {}) {
 export async function requestWalletDashboard(address, options = {}) {
   const result = await requestWalletIntelligence(address, options);
   const dashboard = buildWalletDashboardResponse(result);
-  return enrichTokenMetadata(dashboard);
+  const [enriched, cluster] = await Promise.all([
+    enrichTokenMetadata(dashboard),
+    clusterForWallet(address)
+  ]);
+  enriched.cluster = cluster;
+  return enriched;
 }
 
 if (process.argv[1]?.endsWith("walletProductService.js")) {
