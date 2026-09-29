@@ -1,7 +1,24 @@
 const EPSILON = 0.000000001;
+const LOW_CONFIDENCE_DUST_TOKEN_MAX = 0.00001;
+const LOW_CONFIDENCE_RENT_SOL_MAX = 0.003;
 
 function finitePositive(value) {
   return Number.isFinite(value) && value > 0;
+}
+
+export function isLowConfidenceDustTrade(trade) {
+  return Boolean(
+    trade &&
+    trade.type === "SELL" &&
+    trade.parser === "instruction_swap" &&
+    trade.dex === "unknown" &&
+    Number.isFinite(trade.tokenAmount) &&
+    trade.tokenAmount > 0 &&
+    trade.tokenAmount <= LOW_CONFIDENCE_DUST_TOKEN_MAX &&
+    Number.isFinite(trade.solAmount) &&
+    trade.solAmount > 0 &&
+    trade.solAmount <= LOW_CONFIDENCE_RENT_SOL_MAX
+  );
 }
 
 function ensurePosition(positions, mint, blockTime = null) {
@@ -112,6 +129,7 @@ export function buildPositions(trades, transfers = [], rewards = []) {
 
   for (const trade of trades || []) {
     if (!trade || !trade.tokenMint || !finitePositive(trade.tokenAmount) || !Number.isFinite(trade.solAmount) || trade.solAmount < 0 || (trade.type !== "BUY" && trade.type !== "SELL")) continue;
+    if (isLowConfidenceDustTrade(trade)) continue;
     events.push({
       kind: "TRADE",
       blockTime: trade.blockTime ?? null,
@@ -150,10 +168,6 @@ export function buildPositions(trades, transfers = [], rewards = []) {
   events.sort((a, b) => {
     const timeDiff = (a.blockTime ?? 0) - (b.blockTime ?? 0);
     if (timeDiff !== 0) return timeDiff;
-
-    // blockTime is second-resolution. Use Solana slot only to resolve events
-    // that share the same second; never let a missing slot move an event
-    // to the beginning or end of the entire wallet history.
     if (a.slot != null && b.slot != null && a.slot !== b.slot) return a.slot - b.slot;
     if (a.kind !== b.kind) return priority[a.kind] - priority[b.kind];
     if (a.eventIndex !== b.eventIndex) return a.eventIndex - b.eventIndex;
