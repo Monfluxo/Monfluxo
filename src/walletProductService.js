@@ -75,6 +75,7 @@ async function enrichTokenMetadata(dashboard) {
     dashboard?.positions?.worst,
     ...(dashboard?.trades?.best || []),
     ...(dashboard?.trades?.worst || []),
+    ...(dashboard?.externalTokens?.topSales || []),
     ...(dashboard?.funding?.events || []),
     ...(dashboard?.rewards?.events || [])
   ].filter(Boolean);
