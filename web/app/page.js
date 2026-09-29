@@ -24,6 +24,15 @@ function shorten(value, left = 6, right = 5) {
   return `${value.slice(0, left)}…${value.slice(-right)}`;
 }
 
+function tokenLabel(position) {
+  if (position?.tokenName && position?.tokenSymbol) {
+    return `${position.tokenName} (${position.tokenSymbol})`;
+  }
+  if (position?.tokenName) return position.tokenName;
+  if (position?.tokenSymbol) return position.tokenSymbol;
+  return shorten(position?.tokenMint, 7, 6);
+}
+
 function StatusPill({ tone = "neutral", children }) {
   return <span className={`pill pill-${tone}`}>{children}</span>;
 }
@@ -64,16 +73,16 @@ function PositionTable({ positions = [] }) {
             <th>Token</th>
             <th>State</th>
             <th>Trades</th>
-            <th>Spent</th>
-            <th>Received</th>
-            <th>Total PnL</th>
+            <th>Costo</th>
+            <th>Venta</th>
+            <th>Utilidad</th>
             <th>PnL coverage</th>
           </tr>
         </thead>
         <tbody>
           {positions.map((position) => (
             <tr key={`${position.tokenMint}-${position.state}`}>
-              <td className="mono">{shorten(position.tokenMint, 7, 6)}</td>
+              <td>{tokenLabel(position)}</td>
               <td>
                 <StatusPill tone={position.state === "open" ? "warning" : "neutral"}>
                   {position.state}
