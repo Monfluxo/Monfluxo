@@ -73,6 +73,8 @@ function normalizePosition(position, historyComplete) {
     externalSaleProceedsSol: n(position.externalSaleProceedsSol),
     transferTokensSold: n(position.transferTokensSold),
     rewardTokensSold: n(position.rewardTokensSold),
+    remainingCostSol: n(position.remainingCostSol),
+    positionValueSol: n(position.positionValueSol),
     solSpent: n(position.solSpent),
     solReceived: n(position.solReceived),
     realizedPnlSol: n(position.realizedPnlSol),
@@ -264,7 +266,9 @@ export function buildWalletDashboardResponse(productResult) {
     positions: {
       top: topPositions,
       best: normalizePosition(metrics.best, historyComplete),
-      worst: normalizePosition(metrics.worst, historyComplete)
+      worst: normalizePosition(metrics.worst, historyComplete),
+      minValueSol: n(metrics.openPositionMinValueSol),
+      suppressedDustCount: n(metrics.suppressedDustOpenPositions)
     },
 
     accounting: {
