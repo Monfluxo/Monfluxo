@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeTradeJourney, buildHoldBehavior } from "../src/holdIntelligence.js";
+import { analyzeTradeJourney, buildHoldBehavior, rankJourneyIntelligence } from "../src/holdIntelligence.js";
 import { candleIntervalForHold } from "../src/priceProvider.js";
 
 test("selects candle granularity from hold duration", () => {
@@ -29,9 +29,43 @@ test("calculates MFE MAE capture and underwater time", () => {
   assert.equal(journey.mfePct, 400);
   assert.equal(journey.maePct, -30.000000000000004);
   assert.equal(journey.profitCapturePct, 50);
+  assert.equal(journey.givebackPctPoints, 200);
   assert.equal(journey.missedUpsidePctPoints, 200);
+  assert.equal(journey.missedMillionsType, "PROFIT_GIVEBACK");
   assert.equal(journey.timeToPeakSeconds, 100);
   assert.equal(journey.timeUnderwaterSeconds, 100);
+});
+
+test("classifies a sale before a later explosion as EARLY_EXIT", () => {
+  const journey = analyzeTradeJourney({
+    entryPrice: 1,
+    exitPrice: 2,
+    entryTime: 100,
+    exitTime: 300,
+    candles: [
+      { time: 100, high: 1.1, low: 0.9, close: 1 },
+      { time: 200, high: 2.2, low: 1.1, close: 2 },
+      { time: 300, high: 2.1, low: 1.8, close: 2 }
+    ],
+    postExitCandles: [
+      { time: 400, high: 5, low: 2, close: 4 },
+      { time: 500, high: 101, low: 4, close: 80 }
+    ]
+  });
+  assert.equal(journey.realizedRoiPct, 100);
+  assert.equal(journey.postExitPeakRoiPct, 10000);
+  assert.equal(journey.postExitMultipleFromExit, 50.5);
+  assert.equal(journey.missedMillionsType, "EARLY_EXIT");
+  assert.equal(journey.missedUpsidePctPoints, 9900);
+});
+
+test("ranks missed millions across giveback and early exit", () => {
+  const ranked = rankJourneyIntelligence([
+    { tokenMint: "A", realizedRoiPct: 300, mfePct: 1000, maePct: -80, profitCapturePct: 30, missedMillionsType: "PROFIT_GIVEBACK", missedUpsidePctPoints: 700 },
+    { tokenMint: "B", realizedRoiPct: 100, mfePct: 120, maePct: -20, profitCapturePct: 83, missedMillionsType: "EARLY_EXIT", missedUpsidePctPoints: 9900 }
+  ]);
+  assert.equal(ranked.missedMillions[0].tokenMint, "B");
+  assert.equal(ranked.diamondHands[0].tokenMint, "A");
 });
 
 test("builds wallet hold profile from closed purchased inventory", () => {
@@ -43,7 +77,10 @@ test("builds wallet hold profile from closed purchased inventory", () => {
   assert.equal(profile.sampleSize, 2);
   assert.equal(profile.averageHoldSeconds, 120);
   assert.equal(profile.medianHoldSeconds, 120);
+  assert.equal(profile.p25HoldSeconds, 90);
+  assert.equal(profile.p75HoldSeconds, 150);
   assert.equal(profile.averageWinnerHoldSeconds, 60);
   assert.equal(profile.averageLoserHoldSeconds, 180);
   assert.equal(profile.reentryRatePct, 50);
+  assert.ok(profile.behaviorTags.includes("HIGH_REENTRY"));
 });
