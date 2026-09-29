@@ -15,7 +15,7 @@ function confidenceFromMetrics(metrics, coverage) {
     return {
       level: "partial",
       label: "Partial coverage",
-      reason: "Historical indexing is still in progress. Metrics may change as older activity is indexed."
+      reason: "Historical indexing is still in progress. Metrics and inventory state are provisional until coverage is complete."
     };
   }
 
@@ -54,11 +54,13 @@ function pnlCoverage(metrics) {
   };
 }
 
-function normalizePosition(position) {
+function normalizePosition(position, historyComplete) {
   if (!position) return null;
   return {
     tokenMint: position.tokenMint || null,
-    state: position.open ? "open" : "closed",
+    state: historyComplete ? (position.open ? "open" : "closed") : "provisional",
+    inferredState: position.open ? "open" : "closed",
+    stateFinal: historyComplete,
     pnlComplete: position.pnlComplete === true,
     trades: n(position.trades),
     buys: n(position.buys),
@@ -83,15 +85,38 @@ function normalizePosition(position) {
   };
 }
 
+function normalizeTrade(trade) {
+  if (!trade) return null;
+  return {
+    tokenMint: trade.tokenMint || null,
+    signature: trade.signature || null,
+    blockTime: trade.blockTime ?? null,
+    dex: trade.dex || null,
+    tokensSold: n(trade.tokensSold),
+    costSol: n(trade.costSol),
+    proceedsSol: n(trade.proceedsSol),
+    pnlSol: n(trade.pnlSol),
+    roiPct: nullableNumber(trade.roiPct),
+    pnlComplete: trade.pnlComplete === true
+  };
+}
+
 export function buildWalletDashboardResponse(productResult) {
   const metrics = productResult?.metrics || {};
   const coverage = productResult?.coverage || {};
+  const historyComplete = coverage.historyComplete === true;
   const topPositions = Array.isArray(metrics.topPositions)
-    ? metrics.topPositions.map(normalizePosition).filter(Boolean)
+    ? metrics.topPositions.map((position) => normalizePosition(position, historyComplete)).filter(Boolean)
+    : [];
+  const bestTrades = Array.isArray(metrics.bestTrades)
+    ? metrics.bestTrades.map(normalizeTrade).filter(Boolean)
+    : [];
+  const worstTrades = Array.isArray(metrics.worstTrades)
+    ? metrics.worstTrades.map(normalizeTrade).filter(Boolean)
     : [];
 
   return {
-    schemaVersion: "wallet-intelligence.v1",
+    schemaVersion: "wallet-intelligence.v2",
     wallet: productResult?.wallet || null,
     status: productResult?.status || "indexing",
     metricsStatus: productResult?.metricsStatus || "partial",
@@ -99,19 +124,22 @@ export function buildWalletDashboardResponse(productResult) {
     overview: {
       uniqueTokens: n(metrics.uniqueTokens),
       tradesAnalyzed: n(metrics.tradesAnalyzed),
+      realizedTradesAnalyzed: n(metrics.realizedTradesAnalyzed),
       transfersAnalyzed: n(metrics.transfersAnalyzed),
       buyCount: n(metrics.buyCount),
       sellCount: n(metrics.sellCount),
       totalVolumeSol: n(metrics.totalVolumeSol),
       feesSol: n(metrics.feesSol),
-      openPositions: n(metrics.openPositions),
-      closedPositions: n(metrics.closedPositions),
+      openPositions: historyComplete ? n(metrics.openPositions) : null,
+      closedPositions: historyComplete ? n(metrics.closedPositions) : null,
+      provisionalOpenPositions: n(metrics.openPositions),
+      provisionalClosedPositions: n(metrics.closedPositions),
       winRatePct: nullableNumber(metrics.winRate)
     },
 
     coverage: {
       status: coverage.status || "indexing",
-      historyComplete: coverage.historyComplete === true,
+      historyComplete,
       backfillPending: coverage.backfillPending === true,
       pagesScanned: n(coverage.pagesScanned),
       oldestIndexedAt: coverage.oldestIndexedAt || null,
@@ -127,6 +155,11 @@ export function buildWalletDashboardResponse(productResult) {
       grossBuyVolumeSol: n(metrics.grossBuyVolumeSol),
       grossSellVolumeSol: n(metrics.grossSellVolumeSol),
       pnlCoverage: pnlCoverage(metrics)
+    },
+
+    trades: {
+      best: bestTrades,
+      worst: worstTrades
     },
 
     activity: {
@@ -146,8 +179,8 @@ export function buildWalletDashboardResponse(productResult) {
 
     positions: {
       top: topPositions,
-      best: normalizePosition(metrics.best),
-      worst: normalizePosition(metrics.worst)
+      best: normalizePosition(metrics.best, historyComplete),
+      worst: normalizePosition(metrics.worst, historyComplete)
     },
 
     accounting: {
@@ -162,7 +195,7 @@ export function buildWalletDashboardResponse(productResult) {
 
     indexing: {
       job: productResult?.indexJob || null,
-      refreshRecommended: coverage.historyComplete !== true
+      refreshRecommended: !historyComplete
     },
 
     generatedAt: metrics.generatedAt || new Date().toISOString()
