@@ -1,3 +1,19 @@
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.token-avatar-img {
+  object-fit: cover;
+}
+
+.secondary-panel {
+  background: linear-gradient(180deg, rgba(6, 16, 27, .12), rgba(3, 9, 18, .055));
+  border-color: rgba(107,181,255,.12);
+}
+
 .funding-summary {
   display: flex;
   align-items: center;
@@ -8,29 +24,35 @@
 
 .funding-credit-note {
   margin: -4px 0 16px;
-  padding: 10px 12px;
-  border: 1px solid rgba(84, 190, 255, .12);
+  padding: 9px 11px;
+  border: 1px solid rgba(84, 190, 255, .10);
   border-radius: 11px;
-  background: rgba(3, 12, 22, .12);
-  color: #7f95aa;
-  font-size: 11px;
+  background: rgba(3, 12, 22, .08);
+  color: #73889b;
+  font-size: 10px;
   line-height: 1.5;
 }
 
 .funding-credit-note strong {
-  color: #bcecff;
+  color: #a8dce9;
   font-weight: 750;
 }
 
 .funding-table table {
-  min-width: 1040px;
+  min-width: 1120px;
+}
+
+.funding-table td,
+.funding-table th {
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 
 .funding-asset {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 180px;
+  min-width: 150px;
 }
 
 .funding-asset strong,
@@ -50,21 +72,21 @@
 }
 
 .funding-dot {
-  width: 35px;
-  height: 35px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: 1px solid rgba(51, 222, 255, .24);
-  background: radial-gradient(circle at 30% 24%, rgba(24,244,223,.28), rgba(24,115,255,.16) 56%, rgba(3,10,18,.18));
+  border: 1px solid rgba(51, 222, 255, .20);
+  background: radial-gradient(circle at 30% 24%, rgba(24,244,223,.20), rgba(24,115,255,.11) 56%, rgba(3,10,18,.12));
   color: #79f8eb;
-  box-shadow: 0 0 18px rgba(25, 180, 255, .08);
-  font-size: 18px;
+  box-shadow: 0 0 14px rgba(25, 180, 255, .06);
+  font-size: 16px;
 }
 
 .funding-amount {
-  color: #e4f4ff;
-  font-weight: 700;
+  color: #dcecf6;
+  font-weight: 650;
 }
 
 .wallet-link,
@@ -89,7 +111,7 @@
 }
 
 .tx-link {
-  color: #a6bdd1;
+  color: #8fa8ba;
   font-size: 11px;
   text-decoration: none;
 }
@@ -102,9 +124,9 @@
   white-space: nowrap;
   padding: 7px 10px;
   border-radius: 9px;
-  border: 1px solid rgba(64, 209, 255, .2);
-  background: rgba(13, 121, 180, .08);
-  color: #9cecff;
+  border: 1px solid rgba(64, 209, 255, .16);
+  background: rgba(13, 121, 180, .055);
+  color: #92ddeb;
   font-size: 10px;
   font-weight: 750;
   transition: background .16s ease, border-color .16s ease, transform .16s ease;
@@ -112,8 +134,8 @@
 
 .analyze-source:hover {
   transform: translateY(-1px);
-  background: rgba(13, 152, 218, .14);
-  border-color: rgba(84, 220, 255, .38);
+  background: rgba(13, 152, 218, .12);
+  border-color: rgba(84, 220, 255, .30);
 }
 
 .muted {
@@ -129,10 +151,10 @@
 }
 
 .cluster-overview > div {
-  padding: 12px 14px;
-  border: 1px solid rgba(71, 199, 255, .12);
+  padding: 11px 13px;
+  border: 1px solid rgba(71, 199, 255, .09);
   border-radius: 12px;
-  background: rgba(3, 12, 22, .10);
+  background: rgba(3, 12, 22, .065);
 }
 
 .cluster-overview strong,
@@ -142,7 +164,7 @@
 
 .cluster-overview strong {
   color: #dff8ff;
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
 }
 
@@ -190,8 +212,8 @@
 .evidence-list span {
   padding: 4px 7px;
   border-radius: 999px;
-  border: 1px solid rgba(80, 192, 255, .12);
-  background: rgba(18, 105, 158, .07);
+  border: 1px solid rgba(80, 192, 255, .10);
+  background: rgba(18, 105, 158, .05);
   color: #91adc1;
   font-size: 9px;
   white-space: nowrap;
