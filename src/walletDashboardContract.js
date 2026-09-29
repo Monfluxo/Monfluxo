@@ -111,7 +111,24 @@ function normalizeFunding(event) {
     amount: n(event.amount),
     sourceAddress: event.sourceAddress || null,
     destinationAddress: event.destinationAddress || null,
-    parser: event.parser || null
+    parser: event.parser || null,
+    classification: "TRANSFER"
+  };
+}
+
+function normalizeRewardEvent(event) {
+  if (!event) return null;
+  return {
+    signature: event.signature || null,
+    blockTime: event.blockTime ?? null,
+    assetType: "TOKEN",
+    assetId: event.tokenMint || null,
+    tokenMint: event.tokenMint || null,
+    amount: n(event.amount),
+    sourceAddress: null,
+    destinationAddress: event.creator || null,
+    rewardType: event.rewardType || "CREATOR_FEE",
+    classification: "CREATOR_REWARD"
   };
 }
 
@@ -131,9 +148,12 @@ export function buildWalletDashboardResponse(productResult) {
   const fundingEvents = Array.isArray(metrics.fundingEvents)
     ? metrics.fundingEvents.map(normalizeFunding).filter(Boolean)
     : [];
+  const rewardEvents = Array.isArray(metrics.creatorRewardEvents)
+    ? metrics.creatorRewardEvents.map(normalizeRewardEvent).filter(Boolean)
+    : [];
 
   return {
-    schemaVersion: "wallet-intelligence.v3",
+    schemaVersion: "wallet-intelligence.v4",
     wallet: productResult?.wallet || null,
     status: productResult?.status || "indexing",
     metricsStatus: productResult?.metricsStatus || "partial",
@@ -176,13 +196,18 @@ export function buildWalletDashboardResponse(productResult) {
 
     trades: {
       best: bestTrades,
-      worst: worstTrades
+      worst: worstTrades,
+      rankedCount: n(metrics.rankedRealizedTradesAnalyzed),
+      excludedFromRanking: n(metrics.rankingTradesExcluded),
+      minRankedCostSol: n(metrics.rankingMinCostSol)
     },
 
     funding: {
       count: n(metrics.fundingEventCount),
+      rawCount: n(metrics.fundingEventCount),
       solTotal: n(metrics.solFundingTotal),
       tokenCount: n(metrics.tokenFundingCount),
+      minUsd: 5,
       events: fundingEvents
     },
 
@@ -198,7 +223,8 @@ export function buildWalletDashboardResponse(productResult) {
     rewards: {
       creatorRewardCount: n(metrics.creatorRewardCount),
       creatorRewardTokenAmount: n(metrics.creatorRewardTokenAmount),
-      byMint: metrics.creatorRewardsByMint || {}
+      byMint: metrics.creatorRewardsByMint || {},
+      events: rewardEvents
     },
 
     positions: {
@@ -219,6 +245,9 @@ export function buildWalletDashboardResponse(productResult) {
 
     indexing: {
       job: productResult?.indexJob || null,
+      state: coverage.status || (historyComplete ? "complete" : "indexing"),
+      pagesScanned: n(coverage.pagesScanned),
+      lastProgressAt: coverage.backfillUpdatedAt || coverage.lastSyncedAt || null,
       refreshRecommended: !historyComplete
     },
 
