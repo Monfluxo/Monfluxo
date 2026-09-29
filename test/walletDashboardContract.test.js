@@ -33,7 +33,7 @@ test("wallet dashboard exposes stable final accounting contract", () => {
     }
   });
 
-  assert.equal(response.schemaVersion, "wallet-intelligence.v1");
+  assert.equal(response.schemaVersion, "wallet-intelligence.v6");
   assert.equal(response.metricsStatus, "final");
   assert.equal(response.coverage.historyComplete, true);
   assert.equal(response.performance.pnlCoverage.status, "partial");
