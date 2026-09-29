@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MONFLUXO mark">
+  <defs>
+    <linearGradient id="ring" x1="60" y1="90" x2="452" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#18f4df"/>
+      <stop offset="0.52" stop-color="#11b9ff"/>
+      <stop offset="1" stop-color="#315dff"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="108" y1="182" x2="397" y2="312" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#19f4dd"/>
+      <stop offset="0.48" stop-color="#12c9f4"/>
+      <stop offset="1" stop-color="#275dff"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <circle cx="256" cy="256" r="221" fill="none" stroke="url(#ring)" stroke-width="4" opacity=".95" filter="url(#glow)"/>
+  <path d="M 107.8,300.5 L 115.5,311.5 L 145.4,306.6 L 185,242.5 L 194.8,238.9 L 240.1,303.8 L 254.8,311.1 L 276.4,311.1 L 285.8,305 L 287,297.6 L 268.2,260.9 L 288.7,255.2 L 309.1,236 L 318.1,238.9 L 358.9,306.2 L 385.8,311.5 L 394.4,306.6 L 396.9,297.2 L 350.3,205.8 L 333.2,185.8 L 319.3,180.9 L 295.2,185.8 L 253.1,229.1 L 248.2,229.1 L 220.1,190.7 L 204.6,182.1 L 189.9,180.9 L 173.9,186.6 L 162.1,198 Z" fill="url(#mark)" filter="url(#glow)"/>
+</svg>
