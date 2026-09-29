@@ -1,29 +1,42 @@
 import { analyzeWallet } from "./walletAnalyzer.js";
-import { getSyncState } from "./db.js";
+import { getAnalysisCache, getSyncState } from "./db.js";
 import { enqueueWalletIndexJob } from "./indexQueue.js";
 import { buildWalletDashboardResponse } from "./walletDashboardContract.js";
 import { getTokenMetadata } from "./helius.js";
 import { buildClusterIntelligence } from "./clusterEngine.js";
 
+const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const clusterCache = new Map();
 const CLUSTER_CACHE_MS = Number(process.env.CLUSTER_CACHE_MS || 60_000);
+const INDEX_ACTIVE_WINDOW_MS = Number(process.env.INDEX_ACTIVE_WINDOW_MS || 90_000);
+const MIN_INCOMING_USD = Number(process.env.MIN_INCOMING_USD || 5);
 
 function coverageFromState(state) {
   const historyComplete = state?.history_complete === true;
+  const progressAt = state?.backfill_updated_at || state?.last_synced_at || null;
+  const progressMs = progressAt ? new Date(progressAt).getTime() : 0;
+  const progressAgeMs = progressMs > 0 ? Date.now() - progressMs : null;
+  const active = !historyComplete && state?.status === "syncing" && progressAgeMs != null && progressAgeMs <= INDEX_ACTIVE_WINDOW_MS;
+  const stalled = !historyComplete && state?.status === "syncing" && progressAgeMs != null && progressAgeMs > INDEX_ACTIVE_WINDOW_MS;
+
   return {
-    status: historyComplete ? "complete" : "indexing",
+    status: historyComplete ? "complete" : active ? "active" : stalled ? "stalled" : "queued",
     historyComplete,
+    active,
+    stalled,
     backfillPending: !historyComplete && Boolean(state?.backfill_pagination_token),
     pagesScanned: Number(state?.pages_scanned || 0),
     oldestIndexedAt: state?.oldest_block_time || null,
     newestIndexedAt: state?.newest_block_time || null,
     lastSyncedAt: state?.last_synced_at || null,
-    backfillUpdatedAt: state?.backfill_updated_at || null
+    backfillUpdatedAt: state?.backfill_updated_at || null,
+    progressAgeMs
   };
 }
 
 function mintForEntity(entity) {
   if (entity?.tokenMint) return entity.tokenMint;
+  if (entity?.assetType === "SOL") return WSOL_MINT;
   if (entity?.assetType === "TOKEN") return entity.assetId || null;
   return null;
 }
@@ -35,7 +48,8 @@ async function enrichTokenMetadata(dashboard) {
     dashboard?.positions?.worst,
     ...(dashboard?.trades?.best || []),
     ...(dashboard?.trades?.worst || []),
-    ...(dashboard?.funding?.events || [])
+    ...(dashboard?.funding?.events || []),
+    ...(dashboard?.rewards?.events || [])
   ].filter(Boolean);
 
   const mints = [...new Set(entities.map(mintForEntity).filter(Boolean))];
@@ -55,10 +69,51 @@ async function enrichTokenMetadata(dashboard) {
     const mint = mintForEntity(entity);
     if (!mint) continue;
     const metadata = metadataByMint.get(mint);
-    entity.tokenName = metadata?.name || null;
-    entity.tokenSymbol = metadata?.symbol || null;
+    entity.tokenName = entity.assetType === "SOL" ? "Solana" : metadata?.name || null;
+    entity.tokenSymbol = entity.assetType === "SOL" ? "SOL" : metadata?.symbol || null;
     entity.tokenImage = metadata?.image || null;
+    entity.priceUsd = Number.isFinite(Number(metadata?.priceUsd)) ? Number(metadata.priceUsd) : null;
+    entity.estimatedUsd = entity.priceUsd != null && Number.isFinite(Number(entity.amount))
+      ? Number(entity.amount) * entity.priceUsd
+      : null;
   }
+
+  return dashboard;
+}
+
+function filterMeaningfulIncoming(dashboard) {
+  const funding = dashboard?.funding || {};
+  const rewards = dashboard?.rewards || {};
+  const rawFunding = Array.isArray(funding.events) ? funding.events : [];
+  const rawRewards = Array.isArray(rewards.events) ? rewards.events : [];
+
+  const keep = (event) => Number.isFinite(Number(event?.estimatedUsd)) && Number(event.estimatedUsd) >= MIN_INCOMING_USD;
+  const visibleFunding = rawFunding.filter(keep);
+  const visibleRewards = rawRewards.filter(keep);
+
+  funding.rawCount = rawFunding.length;
+  funding.count = visibleFunding.length;
+  funding.events = visibleFunding;
+  funding.hiddenBelowThresholdOrUnpriced = rawFunding.length - visibleFunding.length;
+  funding.minUsd = MIN_INCOMING_USD;
+  funding.solTotal = visibleFunding
+    .filter((event) => event.assetType === "SOL")
+    .reduce((sum, event) => sum + Number(event.amount || 0), 0);
+
+  rewards.events = visibleRewards;
+  rewards.hiddenBelowThresholdOrUnpriced = rawRewards.length - visibleRewards.length;
+  rewards.minUsd = MIN_INCOMING_USD;
+
+  dashboard.incoming = {
+    minUsd: MIN_INCOMING_USD,
+    events: [...visibleFunding, ...visibleRewards]
+      .sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0))
+      .slice(0, 30),
+    transferCount: visibleFunding.length,
+    rewardCount: visibleRewards.length,
+    hiddenBelowThresholdOrUnpriced:
+      funding.hiddenBelowThresholdOrUnpriced + rewards.hiddenBelowThresholdOrUnpriced
+  };
 
   return dashboard;
 }
@@ -89,9 +144,27 @@ async function clusterForWallet(address) {
   }
 }
 
+async function metricsForRequest(address, stateBefore) {
+  if (stateBefore?.status === "syncing") {
+    const cached = await getAnalysisCache(address);
+    if (cached?.metrics) return cached.metrics;
+  }
+
+  try {
+    const analysis = await analyzeWallet(address, { mode: "quick" });
+    return analysis.metrics;
+  } catch (error) {
+    if (!String(error?.message || "").includes("already in progress")) throw error;
+    const cached = await getAnalysisCache(address);
+    if (cached?.metrics) return cached.metrics;
+    throw error;
+  }
+}
+
 export async function requestWalletIntelligence(address, options = {}) {
   const priority = Number(options.priority || 100);
-  const analysis = await analyzeWallet(address, { mode: "quick" });
+  const stateBefore = await getSyncState(address);
+  const metrics = await metricsForRequest(address, stateBefore);
   const state = await getSyncState(address);
   const coverage = coverageFromState(state);
 
@@ -105,7 +178,7 @@ export async function requestWalletIntelligence(address, options = {}) {
     status: coverage.historyComplete ? "ready" : "indexing",
     metricsStatus: coverage.historyComplete ? "final" : "partial",
     coverage,
-    metrics: analysis.metrics,
+    metrics,
     indexJob: indexJob
       ? {
           status: indexJob.status,
@@ -125,6 +198,7 @@ export async function requestWalletDashboard(address, options = {}) {
     enrichTokenMetadata(dashboard),
     clusterForWallet(address)
   ]);
+  filterMeaningfulIncoming(enriched);
   enriched.cluster = cluster;
   return enriched;
 }
