@@ -147,3 +147,22 @@ export async function getTransaction(signature) {
     "monfluxo-debug-transaction"
   );
 }
+
+export async function getTokenMetadata(mint) {
+  const asset = await heliusRequest(
+    "getAsset",
+    {
+      id: mint,
+      displayOptions: {
+        showFungible: true
+      }
+    },
+    "monfluxo-token-metadata"
+  );
+
+  return {
+    mint,
+    name: asset?.content?.metadata?.name?.trim() || null,
+    symbol: asset?.content?.metadata?.symbol?.trim() || null
+  };
+}
