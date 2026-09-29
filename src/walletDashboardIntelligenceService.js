@@ -74,14 +74,22 @@ async function buildBehavioralIntelligence(address, historyComplete) {
   const trades = tradesRaw.filter((trade) => !isLowConfidenceDustTrade(trade));
   const positions = [...buildPositions(trades, transfers, rewards).values()];
   const holdBehavior = buildHoldBehavior(positions);
+  const providerReady = Boolean(process.env.BIRDEYE_API_KEY);
   const summary = buildWalletIntelligenceSummary(positions, holdBehavior, { historyComplete });
 
   return {
-    holdBehavior,
+    holdBehavior: {
+      ...holdBehavior,
+      status: historyComplete ? "ready" : "provisional",
+      marketJourney: {
+        status: providerReady ? "provider_ready" : "provider_pending",
+        provider: "birdeye"
+      }
+    },
     intelligence: {
       ...summary,
       marketIntelligence: {
-        status: process.env.BIRDEYE_API_KEY ? "provider_configured" : "provider_pending",
+        status: providerReady ? "provider_configured" : "provider_pending",
         provider: "birdeye",
         features: ["TRADE_JOURNEY", "MFE_MAE", "MISSED_MILLIONS", "DIAMOND_HANDS", "ELITE_EXITS"]
       }
@@ -100,7 +108,11 @@ export async function requestWalletDashboardWithIntelligence(address, options = 
     dashboard.behavior = {
       methodology: "purchased_inventory_closed_tokens_v2",
       status: "unavailable",
-      sampleSize: 0
+      sampleSize: 0,
+      marketJourney: {
+        status: process.env.BIRDEYE_API_KEY ? "provider_ready" : "provider_pending",
+        provider: "birdeye"
+      }
     };
     dashboard.intelligence = {
       methodology: "explainable_behavior_summary_v1",
