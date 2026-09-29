@@ -11,6 +11,7 @@ import { buildPositions, isLowConfidenceDustTrade } from "./positionEngine.js";
 
 const MIN_RANKED_TRADE_COST_SOL = Number(process.env.MIN_RANKED_TRADE_COST_SOL || 0.005);
 const POSITION_EPSILON = 0.000000001;
+const DASHBOARD_SAMPLE_SIZE = 6;
 
 function mapTrade(row) {
   return {
@@ -367,13 +368,13 @@ export async function analyzeWallet(address, options = {}) {
   const bestTrades = rankableTokenResults
     .filter((result) => result.pnlSol > 0)
     .sort((a, b) => b.pnlSol - a.pnlSol)
-    .slice(0, 5)
+    .slice(0, DASHBOARD_SAMPLE_SIZE)
     .map(summarizeRealizedToken);
 
   const worstTrades = rankableTokenResults
     .filter((result) => result.pnlSol < 0)
     .sort((a, b) => a.pnlSol - b.pnlSol)
-    .slice(0, 5)
+    .slice(0, DASHBOARD_SAMPLE_SIZE)
     .map(summarizeRealizedToken);
 
   const externalSales = positionList
@@ -386,7 +387,7 @@ export async function analyzeWallet(address, options = {}) {
     .filter(hasOpenPurchasedInventory)
     .sort((a, b) => b.totalPnl - a.totalPnl);
   const matchedPositions = winningPositions + losingPositions;
-  const topPositions = openTokens.slice(0, 10).map(summarizePosition);
+  const topPositions = openTokens.slice(0, DASHBOARD_SAMPLE_SIZE).map(summarizePosition);
   const solFundingTotal = fundingEvents
     .filter((event) => event.assetType === "SOL")
     .reduce((sum, event) => sum + event.amount, 0);
