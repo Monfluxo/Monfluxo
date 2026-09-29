@@ -148,9 +148,13 @@ export function buildPositions(trades, transfers = [], rewards = []) {
 
   const priority = { TRANSFER: 0, REWARD: 1, TRADE: 2 };
   events.sort((a, b) => {
-    if (a.slot != null && b.slot != null && a.slot !== b.slot) return a.slot - b.slot;
     const timeDiff = (a.blockTime ?? 0) - (b.blockTime ?? 0);
     if (timeDiff !== 0) return timeDiff;
+
+    // blockTime is second-resolution. Use Solana slot only to resolve events
+    // that share the same second; never let a missing slot move an event
+    // to the beginning or end of the entire wallet history.
+    if (a.slot != null && b.slot != null && a.slot !== b.slot) return a.slot - b.slot;
     if (a.kind !== b.kind) return priority[a.kind] - priority[b.kind];
     if (a.eventIndex !== b.eventIndex) return a.eventIndex - b.eventIndex;
     return a.signature.localeCompare(b.signature);
