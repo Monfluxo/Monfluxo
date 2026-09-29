@@ -9,6 +9,8 @@ import {
 } from "./db.js";
 import { buildPositions, isLowConfidenceDustTrade } from "./positionEngine.js";
 
+const MIN_RANKED_TRADE_COST_SOL = Number(process.env.MIN_RANKED_TRADE_COST_SOL || 0.005);
+
 function mapTrade(row) {
   return {
     wallet: row.wallet_address,
@@ -136,6 +138,17 @@ function summarizeRealizedTrade(trade) {
   };
 }
 
+function summarizeRewardEvent(reward) {
+  return {
+    signature: reward.signature || null,
+    blockTime: reward.blockTime ?? null,
+    rewardType: reward.rewardType || "CREATOR_FEE",
+    tokenMint: reward.quoteMint || null,
+    amount: round(reward.amount),
+    creator: reward.creator || null
+  };
+}
+
 function eventOrder(a, b, indexField) {
   const time = (a.blockTime ?? 0) - (b.blockTime ?? 0);
   if (time !== 0) return time;
@@ -260,7 +273,13 @@ export async function analyzeWallet(address, options = {}) {
   const realizedTrades = positionList
     .flatMap((position) => position.realizedTrades || [])
     .filter((trade) => Number.isFinite(trade.pnlSol) && Number.isFinite(trade.costSol) && trade.costSol > 0);
-  const rankedRealizedTrades = [...realizedTrades].sort((a, b) => b.pnlSol - a.pnlSol);
+
+  const rankableRealizedTrades = realizedTrades.filter((trade) =>
+    trade.pnlComplete === true &&
+    Number.isFinite(trade.roiPct) &&
+    trade.costSol >= MIN_RANKED_TRADE_COST_SOL
+  );
+  const rankedRealizedTrades = [...rankableRealizedTrades].sort((a, b) => b.pnlSol - a.pnlSol);
   const bestTrades = rankedRealizedTrades.slice(0, 5).map(summarizeRealizedTrade);
   const worstTrades = rankedRealizedTrades.slice(-5).reverse().map(summarizeRealizedTrade);
 
@@ -272,6 +291,7 @@ export async function analyzeWallet(address, options = {}) {
     .filter((event) => event.assetType === "SOL")
     .reduce((sum, event) => sum + event.amount, 0);
   const tokenFundingCount = fundingEvents.filter((event) => event.assetType === "TOKEN").length;
+  const creatorRewardEvents = rewards.slice(-25).reverse().map(summarizeRewardEvent);
 
   const metrics = {
     wallet: address,
@@ -279,6 +299,9 @@ export async function analyzeWallet(address, options = {}) {
     generatedAt: new Date().toISOString(),
     tradesAnalyzed: trades.length,
     realizedTradesAnalyzed: realizedTrades.length,
+    rankedRealizedTradesAnalyzed: rankableRealizedTrades.length,
+    rankingTradesExcluded: realizedTrades.length - rankableRealizedTrades.length,
+    rankingMinCostSol: MIN_RANKED_TRADE_COST_SOL,
     lowConfidenceTradesExcluded,
     lowConfidenceVolumeSolExcluded: round(lowConfidenceVolumeSolExcluded),
     transfersAnalyzed: transfers.length,
@@ -292,6 +315,7 @@ export async function analyzeWallet(address, options = {}) {
     creatorRewardCount,
     creatorRewardTokenAmount: round(creatorRewardTokenAmount),
     creatorRewardsByMint,
+    creatorRewardEvents,
     buyCount: tradeTypeCounts.BUY,
     sellCount: tradeTypeCounts.SELL,
     uniqueTokens: positions.size,
