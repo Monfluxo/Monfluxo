@@ -9,8 +9,10 @@ test("external transfer inventory never becomes zero-cost realized PnL", () => {
   assert.equal(position.realizedPnl, 0);
   assert.equal(position.unknownCostSoldTokens, 40);
   assert.equal(position.unknownCostSellProceedsSol, 4);
+  assert.equal(position.externalTokensSold, 40);
+  assert.equal(position.externalSaleProceedsSol, 4);
   assert.equal(position.unknownCostRemainingTokens, 60);
-  assert.equal(position.pnlComplete, false);
+  assert.equal(position.pnlComplete, true);
 });
 
 test("multiple trades sharing one signature remain independent events", () => {
