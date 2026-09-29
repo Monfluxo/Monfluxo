@@ -1,6 +1,7 @@
 import { analyzeWallet } from "./walletAnalyzer.js";
 import { getSyncState } from "./db.js";
 import { enqueueWalletIndexJob } from "./indexQueue.js";
+import { buildWalletDashboardResponse } from "./walletDashboardContract.js";
 
 function coverageFromState(state) {
   const historyComplete = state?.history_complete === true;
@@ -49,6 +50,11 @@ export async function requestWalletIntelligence(address, options = {}) {
   };
 }
 
+export async function requestWalletDashboard(address, options = {}) {
+  const result = await requestWalletIntelligence(address, options);
+  return buildWalletDashboardResponse(result);
+}
+
 if (process.argv[1]?.endsWith("walletProductService.js")) {
   const address = process.argv[2];
   if (!address) {
@@ -57,7 +63,7 @@ if (process.argv[1]?.endsWith("walletProductService.js")) {
   }
 
   try {
-    const result = await requestWalletIntelligence(address);
+    const result = await requestWalletDashboard(address);
     console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     console.error("Wallet product request failed:", error.message);
