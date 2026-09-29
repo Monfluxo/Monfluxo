@@ -1,0 +1,152 @@
+# MONFLUXO Hold Intelligence
+
+## Goal
+Turn deterministic wallet reconstruction into explainable behavioral intelligence. Transaction truth remains Solana/Helius; market-path context comes from a pluggable historical-price provider.
+
+## Product layers
+
+1. **Hold Behavior (provider-independent)**
+   - average and median hold time
+   - average winner/loser hold time
+   - 10 longest and 10 shortest closed-token holds
+   - re-entry rate and average re-entry count
+   - PnL concentration (top 1 / top 5)
+
+2. **Trade Journey (historical-price dependent)**
+   - entry / exit markers
+   - MFE: maximum favorable excursion
+   - MAE: maximum adverse excursion
+   - realized ROI
+   - peak profit capture
+   - missed upside in percentage points
+   - time to peak
+   - time underwater
+   - trough / peak price and timestamp
+   - price chart from first entry to final exit
+
+3. **Behavioral Profile**
+   - fast scalper / short-term / swing / long-hold tendencies
+   - winner vs loser hold asymmetry
+   - re-entry tendency
+   - PnL concentration
+   - drawdown tolerance once Trade Journey data exists
+   - exit-efficiency tendency once Trade Journey data exists
+
+## Accounting rules
+
+- Hold Intelligence is based only on **purchased inventory**.
+- Tokens received through `TRANSFER_IN` or `REWARD` never create trading ROI.
+- A token enters closed-token behavioral samples only when purchased inventory is fully closed.
+- If purchased inventory was transferred out rather than sold, the lifecycle is not considered a final closed trading result.
+- Multiple buy/sell cycles of the same mint are treated as one lifetime token result for ranking, while event-level lots remain available for future journey annotations.
+
+## Price provider boundary
+
+`src/priceProvider.js` is the only provider-specific boundary.
+
+Current intended provider: **Birdeye**.
+
+The rest of MONFLUXO consumes normalized candles:
+
+```js
+{
+  time,
+  open,
+  high,
+  low,
+  close,
+  volume
+}
+```
+
+Birdeye credentials must never be used by the browser. All calls are backend-only.
+
+## Adaptive candle interval
+
+- <= 1 hour: 1m
+- <= 12 hours: 5m
+- <= 3 days: 15m
+- <= 14 days: 1H
+- <= 90 days: 4H
+- > 90 days: 1D
+
+This keeps charts useful while controlling API cost.
+
+## Cache design
+
+Historical market data is token/time data, not wallet-specific data. Therefore candles must be cached globally and reused across wallets.
+
+`token_price_candles`
+- token_mint
+- interval
+- candle_time
+- OHLCV
+- provider
+- fetched_at
+
+A second wallet analyzing the same token and overlapping period should reuse cached candles instead of calling Birdeye again.
+
+## Journey persistence
+
+`wallet_hold_journeys` stores derived intelligence so page loads do not repeatedly recompute MFE/MAE.
+
+Status lifecycle:
+
+- `pending_price_data`
+- `ready`
+- `insufficient_price_data`
+- `provider_error`
+
+## UI plan
+
+### Trading Behavior
+Primary intelligence panel after Top/Bottom closed tokens.
+
+KPI row:
+- Median hold
+- Avg winner hold
+- Avg loser hold
+- Re-entry rate
+- Top-5 PnL concentration
+
+Tables:
+- 10 longest holds
+- 10 shortest holds
+
+### Trade Journey drawer / detail
+Clicking a closed token opens:
+- interactive price/market-cap chart
+- BUY markers
+- SELL markers
+- peak/trough markers
+- entry, exit, MFE, MAE, profit capture, missed upside, underwater time
+
+### Extreme intelligence lists
+Once price data is available:
+- strongest recoveries: largest negative MAE that finished profitable
+- biggest missed opportunities: largest MFE minus realized ROI
+- best exits: highest profit capture
+- worst givebacks: largest peak-to-exit giveback
+
+## Monetization fit
+
+The base wallet analysis can return deterministic on-chain behavior. Historical market-path enrichment is more expensive and should be cache-aware and credit-aware.
+
+Potential model:
+- wallet analysis credit: deterministic wallet reconstruction
+- Hold Intelligence: included or premium tier
+- Trade Journey: enriched analysis using cached/provider data
+
+Actual credit pricing should be decided only after measuring Birdeye compute/API usage on real wallets.
+
+## Thursday integration checklist
+
+1. Add `BIRDEYE_API_KEY` to backend environment.
+2. Validate OHLCV endpoint shape against `HistoricalPriceProvider`.
+3. Apply `2026-09-29_hold_intelligence.sql` migration.
+4. Add DB read/write functions for candle cache and journeys.
+5. Build a journey worker/service that requests only missing candle ranges.
+6. Validate MFE/MAE against several manually inspected tokens.
+7. Expose Hold Behavior in wallet dashboard contract.
+8. Add Trade Journey UI and chart once real candles are flowing.
+9. Measure API usage per wallet before assigning MONFLUXO credit cost.
