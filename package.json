@@ -7,6 +7,8 @@
     "start": "node --env-file=.env src/index.js",
     "test": "node --test",
     "analyze:wallet": "node --env-file=.env src/walletAnalyzer.js",
+    "product:wallet": "node --env-file=.env src/walletProductService.js",
+    "worker:index": "node --env-file=.env src/indexQueueWorker.js",
     "reparse:wallet": "node --env-file=.env src/reparseWallet.js",
     "repair:wallet": "node --env-file=.env src/repairWallet.js",
     "regression:wallets": "node --env-file=.env src/regressionWallets.js",
