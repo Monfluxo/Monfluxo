@@ -72,7 +72,7 @@ test("builds wallet hold profile from closed purchased inventory", () => {
   const profile = buildHoldBehavior([
     { mint: "A", purchasedTokensRemaining: 0, realizedCostBasis: 1, avgHoldingSeconds: 60, realizedPnl: 2, realizedRoi: 2, buys: 1, sells: 1 },
     { mint: "B", purchasedTokensRemaining: 0, realizedCostBasis: 2, avgHoldingSeconds: 180, realizedPnl: -1, realizedRoi: -0.5, buys: 2, sells: 2 },
-    { mint: "OPEN", purchasedTokensRemaining: 1, realizedCostBasis: 1, avgHoldingSeconds: 10, realizedPnl: 5, realizedRoi: 5, buys: 1, sells: 0 }
+    { mint: "OPEN", purchasedTokensRemaining: 1, remainingCostSol: 1, lastPriceSol: 1, realizedCostBasis: 1, avgHoldingSeconds: 10, realizedPnl: 5, realizedRoi: 5, buys: 1, sells: 0 }
   ]);
   assert.equal(profile.sampleSize, 2);
   assert.equal(profile.averageHoldSeconds, 120);
