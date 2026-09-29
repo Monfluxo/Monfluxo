@@ -10,6 +10,12 @@ export function candleIntervalForHold(seconds) {
   return "1D";
 }
 
+export function missedMillionsLookaheadSeconds() {
+  const days = Number(process.env.MISSED_MILLIONS_LOOKAHEAD_DAYS || 30);
+  const safeDays = Number.isFinite(days) ? Math.min(90, Math.max(1, days)) : 30;
+  return safeDays * 24 * 60 * 60;
+}
+
 function normalizeCandle(row) {
   return {
     time: Number(row?.unixTime ?? row?.time ?? 0),
@@ -64,6 +70,38 @@ export class HistoricalPriceProvider {
       .sort((a, b) => a.time - b.time);
 
     return { status: "ready", provider: "birdeye", interval: type, candles };
+  }
+
+  async getTradeJourneyCandles({ mint, entryTime, exitTime }) {
+    const holdSeconds = Math.max(0, Number(exitTime) - Number(entryTime));
+    const during = await this.getCandles({
+      mint,
+      startTime: entryTime,
+      endTime: exitTime,
+      interval: candleIntervalForHold(holdSeconds)
+    });
+
+    if (during.status !== "ready") {
+      return { ...during, during: [], postExit: [], postExitLookaheadSeconds: missedMillionsLookaheadSeconds() };
+    }
+
+    const lookahead = missedMillionsLookaheadSeconds();
+    const postExit = await this.getCandles({
+      mint,
+      startTime: exitTime,
+      endTime: exitTime + lookahead,
+      interval: candleIntervalForHold(lookahead)
+    });
+
+    return {
+      status: "ready",
+      provider: "birdeye",
+      during: during.candles,
+      postExit: postExit.status === "ready" ? postExit.candles : [],
+      duringInterval: during.interval,
+      postExitInterval: postExit.interval || null,
+      postExitLookaheadSeconds: lookahead
+    };
   }
 }
 
