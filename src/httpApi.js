@@ -1,5 +1,5 @@
 import http from "node:http";
-import { requestWalletDashboard } from "./walletProductService.js";
+import { requestWalletDashboardWithIntelligence } from "./walletDashboardIntelligenceService.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -50,7 +50,7 @@ export async function handleRequest(req, res) {
 
     try {
       const priority = Number(url.searchParams.get("priority") || 100);
-      const payload = await requestWalletDashboard(wallet, { priority });
+      const payload = await requestWalletDashboardWithIntelligence(wallet, { priority });
       return sendJson(res, 200, payload);
     } catch (error) {
       console.error("Wallet API request failed:", error);
