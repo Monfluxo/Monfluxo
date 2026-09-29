@@ -4,10 +4,13 @@ import { enqueueWalletIndexJob } from "./indexQueue.js";
 import { buildWalletDashboardResponse } from "./walletDashboardContract.js";
 import { getTokenMetadata } from "./helius.js";
 import { buildClusterIntelligence } from "./clusterEngine.js";
+import { buildWalletHoldBehavior } from "./walletBehaviorService.js";
 
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const clusterCache = new Map();
+const behaviorCache = new Map();
 const CLUSTER_CACHE_MS = Number(process.env.CLUSTER_CACHE_MS || 60_000);
+const BEHAVIOR_CACHE_MS = Number(process.env.BEHAVIOR_CACHE_MS || 300_000);
 const INDEX_ACTIVE_WINDOW_MS = Number(process.env.INDEX_ACTIVE_WINDOW_MS || 90_000);
 const MIN_INCOMING_USD = Number(process.env.MIN_INCOMING_USD || 5);
 const MIN_RANKED_TRADE_COST_SOL = Number(process.env.MIN_RANKED_TRADE_COST_SOL || 0.005);
@@ -37,7 +40,7 @@ function coverageFromState(state) {
 
 function sanitizeMetrics(metrics) {
   if (!metrics || typeof metrics !== "object") return metrics;
-  const tokenNetRanking = metrics.rankingUnit === "TOKEN_LIFETIME_NET";
+  const tokenNetRanking = ["TOKEN_LIFETIME_NET", "CLOSED_TOKEN_LIFETIME_NET"].includes(metrics.rankingUnit);
   const cleanRanked = (items) => (Array.isArray(items) ? items : []).filter((result) =>
     (tokenNetRanking || result?.pnlComplete === true) &&
     Number.isFinite(Number(result?.costSol)) &&
@@ -74,6 +77,7 @@ function mintForEntity(entity) {
 }
 
 async function enrichTokenMetadata(dashboard) {
+  const behavior = dashboard?.behavior || {};
   const entities = [
     ...(dashboard?.positions?.top || []),
     dashboard?.positions?.best,
@@ -82,7 +86,9 @@ async function enrichTokenMetadata(dashboard) {
     ...(dashboard?.trades?.worst || []),
     ...(dashboard?.externalTokens?.topSales || []),
     ...(dashboard?.funding?.events || []),
-    ...(dashboard?.rewards?.events || [])
+    ...(dashboard?.rewards?.events || []),
+    ...(behavior?.longest || []),
+    ...(behavior?.shortest || [])
   ].filter(Boolean);
 
   const mints = [...new Set(entities.map(mintForEntity).filter(Boolean))];
@@ -153,9 +159,7 @@ function filterMeaningfulIncoming(dashboard) {
 
 async function clusterForWallet(address) {
   const cached = clusterCache.get(address);
-  if (cached && Date.now() - cached.createdAt < CLUSTER_CACHE_MS) {
-    return cached.value;
-  }
+  if (cached && Date.now() - cached.createdAt < CLUSTER_CACHE_MS) return cached.value;
 
   try {
     const value = await buildClusterIntelligence(address);
@@ -174,6 +178,46 @@ async function clusterForWallet(address) {
       relationships: [],
       disclaimer: "Cluster intelligence is temporarily unavailable. Relationship scores never establish human identity or ownership."
     };
+  }
+}
+
+function pendingBehavior() {
+  return {
+    status: "pending_history",
+    sampleSize: 0,
+    behaviorTags: [],
+    longest: [],
+    shortest: [],
+    marketJourney: {
+      status: process.env.BIRDEYE_API_KEY ? "provider_ready" : "awaiting_birdeye",
+      provider: "birdeye",
+      features: ["MFE", "MAE", "profit_capture", "missed_millions", "diamond_hands", "elite_exits", "trade_journey_chart"]
+    }
+  };
+}
+
+async function behaviorForWallet(address, historyComplete) {
+  if (!historyComplete) return pendingBehavior();
+  const cached = behaviorCache.get(address);
+  if (cached && Date.now() - cached.createdAt < BEHAVIOR_CACHE_MS) return cached.value;
+
+  try {
+    const behavior = await buildWalletHoldBehavior(address);
+    const value = {
+      status: "ready",
+      ...behavior,
+      marketJourney: {
+        status: process.env.BIRDEYE_API_KEY ? "provider_ready" : "awaiting_birdeye",
+        provider: "birdeye",
+        missedMillionsTaxonomy: ["PROFIT_GIVEBACK", "EARLY_EXIT", "HYBRID"],
+        features: ["MFE", "MAE", "profit_capture", "missed_millions", "diamond_hands", "elite_exits", "trade_journey_chart"]
+      }
+    };
+    behaviorCache.set(address, { createdAt: Date.now(), value });
+    return value;
+  } catch (error) {
+    console.warn(`Unable to build hold behavior for ${address}: ${error.message}`);
+    return { ...pendingBehavior(), status: "unavailable", error: error.message };
   }
 }
 
@@ -202,9 +246,7 @@ export async function requestWalletIntelligence(address, options = {}) {
   const coverage = coverageFromState(state);
 
   let indexJob = null;
-  if (!coverage.historyComplete) {
-    indexJob = await enqueueWalletIndexJob(address, priority);
-  }
+  if (!coverage.historyComplete) indexJob = await enqueueWalletIndexJob(address, priority);
 
   return {
     wallet: address,
@@ -227,12 +269,14 @@ export async function requestWalletIntelligence(address, options = {}) {
 export async function requestWalletDashboard(address, options = {}) {
   const result = await requestWalletIntelligence(address, options);
   const dashboard = buildWalletDashboardResponse(result);
-  const [enriched, cluster] = await Promise.all([
-    enrichTokenMetadata(dashboard),
-    clusterForWallet(address)
+  const [cluster, behavior] = await Promise.all([
+    clusterForWallet(address),
+    behaviorForWallet(address, result.coverage.historyComplete)
   ]);
+  dashboard.cluster = cluster;
+  dashboard.behavior = behavior;
+  const enriched = await enrichTokenMetadata(dashboard);
   filterMeaningfulIncoming(enriched);
-  enriched.cluster = cluster;
   return enriched;
 }
 
