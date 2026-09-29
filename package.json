@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node --env-file=.env src/index.js",
+    "api": "node --env-file=.env src/httpApi.js",
     "test": "node --test",
     "analyze:wallet": "node --env-file=.env src/walletAnalyzer.js",
     "product:wallet": "node --env-file=.env src/walletProductService.js",
