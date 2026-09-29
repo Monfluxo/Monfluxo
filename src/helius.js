@@ -23,24 +23,13 @@ async function heliusRequest(method, params, id) {
   while (true) {
     const response = await fetch(HELIUS_RPC_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id,
-        method,
-        params
-      })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id, method, params })
     });
 
     if (response.ok) {
       const data = await response.json();
-
-      if (data.error) {
-        throw new Error(data.error.message || "Helius API error");
-      }
-
+      if (data.error) throw new Error(data.error.message || "Helius API error");
       return data.result;
     }
 
@@ -53,116 +42,80 @@ async function heliusRequest(method, params, id) {
     const exponential = Math.min(30000, 1000 * 2 ** attempt);
     const jitter = Math.floor(Math.random() * 250);
     const delay = retryAfter > 0 ? retryAfter * 1000 : exponential + jitter;
-
-    console.warn(
-      `Helius rate/service limit (${response.status}). Retrying in ${delay}ms.`
-    );
-
+    console.warn(`Helius rate/service limit (${response.status}). Retrying in ${delay}ms.`);
     await sleep(delay);
     attempt++;
   }
 }
 
-export async function getTransactionsForAddress(
-  address,
-  paginationToken = null,
-  requestOptions = {}
-) {
-  const tokenAccounts =
-    requestOptions.tokenAccounts ??
-    process.env.HELIUS_TOKEN_ACCOUNTS_FILTER ??
-    "balanceChanged";
-
-  const filters = {
-    ...(requestOptions.filters || {})
-  };
-
-  if (requestOptions.succeededOnly !== false) {
-    filters.status = "succeeded";
-  }
-
-  if (tokenAccounts && tokenAccounts !== "none") {
-    filters.tokenAccounts = tokenAccounts;
-  }
+export async function getTransactionsForAddress(address, paginationToken = null, requestOptions = {}) {
+  const tokenAccounts = requestOptions.tokenAccounts ?? process.env.HELIUS_TOKEN_ACCOUNTS_FILTER ?? "balanceChanged";
+  const filters = { ...(requestOptions.filters || {}) };
+  if (requestOptions.succeededOnly !== false) filters.status = "succeeded";
+  if (tokenAccounts && tokenAccounts !== "none") filters.tokenAccounts = tokenAccounts;
 
   const options = {
     transactionDetails: "full",
-    limit: Math.min(
-      Math.max(Number(requestOptions.limit || FULL_PAGE_LIMIT), 1),
-      100
-    ),
+    limit: Math.min(Math.max(Number(requestOptions.limit || FULL_PAGE_LIMIT), 1), 100),
     sortOrder: requestOptions.sortOrder || "desc",
     ...(Object.keys(filters).length ? { filters } : {})
   };
-
-  if (paginationToken) {
-    options.paginationToken = paginationToken;
-  }
-
-  return heliusRequest(
-    "getTransactionsForAddress",
-    [address, options],
-    "monfluxo-history"
-  );
+  if (paginationToken) options.paginationToken = paginationToken;
+  return heliusRequest("getTransactionsForAddress", [address, options], "monfluxo-history");
 }
 
-export async function getTransfersByAddress(
-  address,
-  paginationToken = null,
-  requestOptions = {}
-) {
+export async function getTransfersByAddress(address, paginationToken = null, requestOptions = {}) {
   const options = {
-    limit: Math.min(
-      Math.max(Number(requestOptions.limit || 100), 1),
-      100
-    ),
+    limit: Math.min(Math.max(Number(requestOptions.limit || 100), 1), 100),
     ...(requestOptions.direction ? { direction: requestOptions.direction } : {}),
     ...(requestOptions.mint ? { mint: requestOptions.mint } : {}),
     ...(requestOptions.with ? { with: requestOptions.with } : {}),
     ...(requestOptions.filters ? { filters: requestOptions.filters } : {})
   };
-
-  if (paginationToken) {
-    options.paginationToken = paginationToken;
-  }
-
-  return heliusRequest(
-    "getTransfersByAddress",
-    [address, options],
-    "monfluxo-transfers"
-  );
+  if (paginationToken) options.paginationToken = paginationToken;
+  return heliusRequest("getTransfersByAddress", [address, options], "monfluxo-transfers");
 }
 
 export async function getTransaction(signature) {
   return heliusRequest(
     "getTransaction",
-    [
-      signature,
-      {
-        encoding: "jsonParsed",
-        commitment: "confirmed",
-        maxSupportedTransactionVersion: 0
-      }
-    ],
+    [signature, { encoding: "jsonParsed", commitment: "confirmed", maxSupportedTransactionVersion: 0 }],
     "monfluxo-debug-transaction"
   );
+}
+
+async function fetchJsonMetadata(uri) {
+  if (!uri || !/^https?:\/\//i.test(uri)) return null;
+  try {
+    const response = await fetch(uri, { signal: AbortSignal.timeout(3500) });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function getTokenMetadata(mint) {
   const asset = await heliusRequest(
     "getAsset",
-    {
-      id: mint,
-      displayOptions: {
-        showFungible: true
-      }
-    },
+    { id: mint, displayOptions: { showFungible: true } },
     "monfluxo-token-metadata"
   );
 
+  let name = asset?.content?.metadata?.name?.trim() || asset?.token_info?.name?.trim() || null;
+  let symbol = asset?.content?.metadata?.symbol?.trim() || asset?.token_info?.symbol?.trim() || null;
+  const jsonUri = asset?.content?.json_uri || asset?.content?.links?.json || null;
+
+  if (!name || !symbol) {
+    const remote = await fetchJsonMetadata(jsonUri);
+    name = name || (typeof remote?.name === "string" ? remote.name.trim() : null);
+    symbol = symbol || (typeof remote?.symbol === "string" ? remote.symbol.trim() : null);
+  }
+
   return {
     mint,
-    name: asset?.content?.metadata?.name?.trim() || null,
-    symbol: asset?.content?.metadata?.symbol?.trim() || null
+    name,
+    symbol,
+    image: asset?.content?.links?.image || null
   };
 }
