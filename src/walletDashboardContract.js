@@ -37,20 +37,16 @@ function confidenceFromMetrics(metrics, coverage) {
 }
 
 function pnlCoverage(metrics) {
-  const unknownSoldTokens = n(metrics?.unknownCostSoldTokens);
-  const unknownProceeds = n(metrics?.unknownCostSellProceedsSol);
-  const unknownRemaining = n(metrics?.unknownCostRemainingTokens);
+  const unmatched = n(metrics?.unmatchedSellProceedsSol);
   const complete = metrics?.pnlComplete === true;
 
   return {
     status: complete ? "complete" : "partial",
     complete,
-    unknownCostSoldTokens: unknownSoldTokens,
-    unknownCostSellProceedsSol: unknownProceeds,
-    unknownCostRemainingTokens: unknownRemaining,
+    unmatchedSellProceedsSol: unmatched,
     message: complete
-      ? "All analyzed inventory has known cost basis."
-      : "Known-cost PnL is deterministic, but part of the wallet inventory has unknown acquisition cost."
+      ? "Trading PnL uses purchased inventory only. External tokens are accounted for separately."
+      : "Purchased-token PnL is deterministic for matched FIFO lots; some sale proceeds remain unmatched."
   };
 }
 
@@ -71,6 +67,12 @@ function normalizePosition(position, historyComplete) {
     tokensBought: n(position.tokensBought),
     tokensSold: n(position.tokensSold),
     tokensRemaining: n(position.tokensRemaining),
+    purchasedTokensRemaining: n(position.purchasedTokensRemaining),
+    externalTokensRemaining: n(position.externalTokensRemaining),
+    externalTokensSold: n(position.externalTokensSold),
+    externalSaleProceedsSol: n(position.externalSaleProceedsSol),
+    transferTokensSold: n(position.transferTokensSold),
+    rewardTokensSold: n(position.rewardTokensSold),
     solSpent: n(position.solSpent),
     solReceived: n(position.solReceived),
     realizedPnlSol: n(position.realizedPnlSol),
@@ -78,8 +80,6 @@ function normalizePosition(position, historyComplete) {
     totalPnlSol: n(position.totalPnlSol),
     realizedRoiPct: nullableNumber(position.realizedRoi),
     avgHoldingSeconds: nullableNumber(position.avgHoldingSeconds),
-    unknownCostSoldTokens: n(position.unknownCostSoldTokens),
-    unknownCostSellProceedsSol: n(position.unknownCostSellProceedsSol),
     unmatchedSoldTokens: n(position.unmatchedSoldTokens),
     unmatchedSellProceedsSol: n(position.unmatchedSellProceedsSol)
   };
@@ -93,11 +93,29 @@ function normalizeTrade(trade) {
     blockTime: trade.blockTime ?? null,
     dex: trade.dex || null,
     tokensSold: n(trade.tokensSold),
+    purchasedTokensSold: n(trade.purchasedTokensSold),
+    externalTokensSoldInSameTx: n(trade.externalTokensSoldInSameTx),
     costSol: n(trade.costSol),
     proceedsSol: n(trade.proceedsSol),
     pnlSol: n(trade.pnlSol),
     roiPct: nullableNumber(trade.roiPct),
+    mixedOrigins: trade.mixedOrigins === true,
     pnlComplete: trade.pnlComplete === true
+  };
+}
+
+function normalizeExternalSale(sale) {
+  if (!sale) return null;
+  return {
+    tokenMint: sale.tokenMint || null,
+    signature: sale.signature || null,
+    blockTime: sale.blockTime ?? null,
+    dex: sale.dex || null,
+    tokensSold: n(sale.tokensSold),
+    transferTokensSold: n(sale.transferTokensSold),
+    rewardTokensSold: n(sale.rewardTokensSold),
+    proceedsSol: n(sale.proceedsSol),
+    origin: sale.origin || "EXTERNAL"
   };
 }
 
@@ -145,6 +163,9 @@ export function buildWalletDashboardResponse(productResult) {
   const worstTrades = Array.isArray(metrics.worstTrades)
     ? metrics.worstTrades.map(normalizeTrade).filter(Boolean)
     : [];
+  const externalSales = Array.isArray(metrics.topExternalSales)
+    ? metrics.topExternalSales.map(normalizeExternalSale).filter(Boolean)
+    : [];
   const fundingEvents = Array.isArray(metrics.fundingEvents)
     ? metrics.fundingEvents.map(normalizeFunding).filter(Boolean)
     : [];
@@ -153,7 +174,7 @@ export function buildWalletDashboardResponse(productResult) {
     : [];
 
   return {
-    schemaVersion: "wallet-intelligence.v4",
+    schemaVersion: "wallet-intelligence.v5",
     wallet: productResult?.wallet || null,
     status: productResult?.status || "indexing",
     metricsStatus: productResult?.metricsStatus || "partial",
@@ -199,7 +220,17 @@ export function buildWalletDashboardResponse(productResult) {
       worst: worstTrades,
       rankedCount: n(metrics.rankedRealizedTradesAnalyzed),
       excludedFromRanking: n(metrics.rankingTradesExcluded),
-      minRankedCostSol: n(metrics.rankingMinCostSol)
+      minRankedCostSol: n(metrics.rankingMinCostSol),
+      methodology: "ROI and PnL use only tokens acquired through BUY lots. External transfers and rewards are excluded."
+    },
+
+    externalTokens: {
+      salesCount: n(metrics.externalSalesAnalyzed),
+      tokensSold: n(metrics.externalTokensSold),
+      tokensRemaining: n(metrics.externalTokensRemaining),
+      saleProceedsSol: n(metrics.externalTokenSaleProceedsSol),
+      topSales: externalSales,
+      methodology: "Tokens received by transfer or reward are tracked separately and never assigned trading ROI."
     },
 
     funding: {
@@ -236,9 +267,9 @@ export function buildWalletDashboardResponse(productResult) {
     accounting: {
       unmatchedSoldTokens: n(metrics.unmatchedSoldTokens),
       unmatchedSellProceedsSol: n(metrics.unmatchedSellProceedsSol),
-      unknownCostSoldTokens: n(metrics.unknownCostSoldTokens),
-      unknownCostSellProceedsSol: n(metrics.unknownCostSellProceedsSol),
-      unknownCostRemainingTokens: n(metrics.unknownCostRemainingTokens)
+      externalTokensSold: n(metrics.externalTokensSold),
+      externalTokenSaleProceedsSol: n(metrics.externalTokenSaleProceedsSol),
+      externalTokensRemaining: n(metrics.externalTokensRemaining)
     },
 
     confidence: confidenceFromMetrics(metrics, coverage),
