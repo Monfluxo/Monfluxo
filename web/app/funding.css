@@ -1,0 +1,128 @@
+.funding-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.funding-credit-note {
+  margin: -4px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(84, 190, 255, .12);
+  border-radius: 11px;
+  background: rgba(3, 12, 22, .12);
+  color: #7f95aa;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.funding-credit-note strong {
+  color: #bcecff;
+  font-weight: 750;
+}
+
+.funding-table table {
+  min-width: 1040px;
+}
+
+.funding-asset {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 180px;
+}
+
+.funding-asset strong,
+.funding-asset small {
+  display: block;
+}
+
+.funding-asset strong {
+  color: #edf9ff;
+  font-size: 12px;
+}
+
+.funding-asset small {
+  margin-top: 3px;
+  color: #71879c;
+  font-size: 10px;
+}
+
+.funding-dot {
+  width: 35px;
+  height: 35px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(51, 222, 255, .24);
+  background: radial-gradient(circle at 30% 24%, rgba(24,244,223,.28), rgba(24,115,255,.16) 56%, rgba(3,10,18,.18));
+  color: #79f8eb;
+  box-shadow: 0 0 18px rgba(25, 180, 255, .08);
+  font-size: 18px;
+}
+
+.funding-amount {
+  color: #e4f4ff;
+  font-weight: 700;
+}
+
+.wallet-link,
+.analyze-source {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.wallet-link {
+  padding: 0;
+  background: transparent;
+  color: #71d9ff;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.wallet-link:hover {
+  color: #a9f5ff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.tx-link {
+  color: #a6bdd1;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.tx-link:hover {
+  color: #7feeff;
+}
+
+.analyze-source {
+  white-space: nowrap;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(64, 209, 255, .2);
+  background: rgba(13, 121, 180, .08);
+  color: #9cecff;
+  font-size: 10px;
+  font-weight: 750;
+  transition: background .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+.analyze-source:hover {
+  transform: translateY(-1px);
+  background: rgba(13, 152, 218, .14);
+  border-color: rgba(84, 220, 255, .38);
+}
+
+.muted {
+  color: #6e8193;
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .funding-summary {
+    justify-content: flex-start;
+  }
+}
