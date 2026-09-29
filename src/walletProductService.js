@@ -14,6 +14,7 @@ const BEHAVIOR_CACHE_MS = Number(process.env.BEHAVIOR_CACHE_MS || 300_000);
 const INDEX_ACTIVE_WINDOW_MS = Number(process.env.INDEX_ACTIVE_WINDOW_MS || 90_000);
 const MIN_INCOMING_USD = Number(process.env.MIN_INCOMING_USD || 5);
 const MIN_RANKED_TRADE_COST_SOL = Number(process.env.MIN_RANKED_TRADE_COST_SOL || 0.005);
+const DASHBOARD_SAMPLE_SIZE = 6;
 
 function coverageFromState(state) {
   const historyComplete = state?.history_complete === true;
@@ -52,15 +53,16 @@ function sanitizeMetrics(metrics) {
   const originalWorst = Array.isArray(metrics.worstTrades) ? metrics.worstTrades.length : 0;
   const bestTrades = cleanRanked(metrics.bestTrades)
     .filter((result) => Number(result.pnlSol) > 0)
-    .slice(0, 5);
+    .slice(0, DASHBOARD_SAMPLE_SIZE);
   const worstTrades = cleanRanked(metrics.worstTrades)
     .filter((result) => Number(result.pnlSol) < 0)
-    .slice(0, 5);
+    .slice(0, DASHBOARD_SAMPLE_SIZE);
 
   return {
     ...metrics,
     bestTrades,
     worstTrades,
+    topPositions: (Array.isArray(metrics.topPositions) ? metrics.topPositions : []).slice(0, DASHBOARD_SAMPLE_SIZE),
     rankingMinCostSol: Number(metrics.rankingMinCostSol || MIN_RANKED_TRADE_COST_SOL),
     rankingTradesExcluded: Number(metrics.rankingTradesExcluded || 0) +
       (originalBest - bestTrades.length) +
