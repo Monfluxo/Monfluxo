@@ -143,14 +143,14 @@ export async function replaceWalletEventsForSignatures(address, signatures) {
 export async function getWalletRewardsPage(address, limit = 1000, offset = 0) {
   const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
   return request(
-    `wallet_rewards?wallet_address=eq.${queryEncode(address)}&select=*&order=slot.asc.nullslast,instruction_index.asc,signature.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+    `wallet_rewards?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.asc,slot.asc.nullslast,instruction_index.asc,signature.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
   );
 }
 
 export async function getWalletTransferPage(address, limit = 1000, offset = 0) {
   const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
   return request(
-    `wallet_transfers?wallet_address=eq.${queryEncode(address)}&select=*&order=slot.asc.nullslast,event_index.asc,signature.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+    `wallet_transfers?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.asc,slot.asc.nullslast,event_index.asc,signature.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
   );
 }
 
@@ -181,13 +181,13 @@ export async function getRecentUsageCount(userId, action) {
 export async function getTradeSamples(limit = 10) {
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
   return request(
-    `wallet_trades?select=wallet_address,signature,event_index,parser,type,token_mint,block_time,slot&order=slot.desc.nullslast,event_index.desc&limit=${safeLimit}`
+    `wallet_trades?select=wallet_address,signature,event_index,parser,type,token_mint,block_time,slot&order=block_time.desc,slot.desc.nullslast,event_index.desc&limit=${safeLimit}`
   );
 }
 
 export async function getWalletTradePage(address, limit = 1000, offset = 0) {
   const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
   return request(
-    `wallet_trades?wallet_address=eq.${queryEncode(address)}&select=*&order=slot.asc.nullslast,event_index.asc,signature.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+    `wallet_trades?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.asc,slot.asc.nullslast,event_index.asc,signature.asc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
   );
 }
