@@ -46,11 +46,14 @@ function normalizeHolding(asset) {
     : Number.isFinite(priceUsd) && priceUsd > 0
       ? amount * priceUsd
       : null;
+  const imageUrl = imageFromAsset(asset);
   return {
     tokenMint: asset.id,
     tokenName: asset?.content?.metadata?.name || null,
     tokenSymbol: asset?.content?.metadata?.symbol || null,
-    tokenImage: imageFromAsset(asset) ? `/api/token-image/${encodeURIComponent(asset.id)}` : null,
+    tokenImage: imageUrl || null,
+    imageUrl: imageUrl || null,
+    tokenImageProxy: imageUrl ? `/api/token-image/${encodeURIComponent(asset.id)}` : null,
     amount,
     priceUsd: Number.isFinite(priceUsd) && priceUsd > 0 ? priceUsd : null,
     valueUsd: Number.isFinite(valueUsd) ? valueUsd : null
@@ -110,6 +113,9 @@ export function applyPortfolioPricesToDashboard(dashboard, portfolio) {
     const priceUsd = Number(holding?.priceUsd);
     const purchasedTokens = Number(position.purchasedTokensRemaining || 0);
     const remainingCostSol = Number(position.remainingCostSol || 0);
+    if (holding?.tokenImage && !position.tokenImage) position.tokenImage = holding.tokenImage;
+    if (holding?.tokenName && !position.tokenName) position.tokenName = holding.tokenName;
+    if (holding?.tokenSymbol && !position.tokenSymbol) position.tokenSymbol = holding.tokenSymbol;
     if (!(priceUsd > 0) || !(solPriceUsd > 0) || !(purchasedTokens > 0)) continue;
     const currentValueUsd = purchasedTokens * priceUsd;
     const currentValueSol = currentValueUsd / solPriceUsd;
