@@ -1,6 +1,7 @@
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 const CACHE_MS = Number(process.env.PORTFOLIO_CACHE_MS || 30_000);
+const MIN_OPEN_POSITION_VALUE_SOL = Number(process.env.MIN_OPEN_POSITION_VALUE_SOL || 0.005);
 const cache = new Map();
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
@@ -108,25 +109,64 @@ export function applyPortfolioPricesToDashboard(dashboard, portfolio) {
   const solPriceUsd = Number(portfolio.solPriceUsd);
   const byMint = new Map((portfolio.holdings || []).map((item) => [item.tokenMint, item]));
   const positions = dashboard?.positions?.top || [];
+  const livePositions = [];
+  let suppressedNoBalance = 0;
+  let suppressedUnpriced = 0;
+  let suppressedBelowMaterial = 0;
+
   for (const position of positions) {
     const holding = byMint.get(position.tokenMint);
+    const holdingAmount = Number(holding?.amount || 0);
+    if (!(holdingAmount > 0)) {
+      suppressedNoBalance++;
+      continue;
+    }
+
     const priceUsd = Number(holding?.priceUsd);
-    const purchasedTokens = Number(position.purchasedTokensRemaining || 0);
+    const purchasedTokens = Math.min(Number(position.purchasedTokensRemaining || 0), holdingAmount);
     const remainingCostSol = Number(position.remainingCostSol || 0);
     if (holding?.tokenImage && !position.tokenImage) position.tokenImage = holding.tokenImage;
     if (holding?.tokenName && !position.tokenName) position.tokenName = holding.tokenName;
     if (holding?.tokenSymbol && !position.tokenSymbol) position.tokenSymbol = holding.tokenSymbol;
-    if (!(priceUsd > 0) || !(solPriceUsd > 0) || !(purchasedTokens > 0)) continue;
+    position.liveWalletTokenBalance = holdingAmount;
+
+    if (!(purchasedTokens > 0)) {
+      suppressedNoBalance++;
+      continue;
+    }
+
+    if (!(priceUsd > 0) || !(solPriceUsd > 0)) {
+      position.livePriceStatus = "unpriced";
+      suppressedUnpriced++;
+      continue;
+    }
+
     const currentValueUsd = purchasedTokens * priceUsd;
     const currentValueSol = currentValueUsd / solPriceUsd;
+    if (!(currentValueSol >= MIN_OPEN_POSITION_VALUE_SOL)) {
+      suppressedBelowMaterial++;
+      continue;
+    }
+
     const unrealizedPnlSol = currentValueSol - remainingCostSol;
     position.currentPriceUsd = priceUsd;
     position.currentPositionValueUsd = currentValueUsd;
     position.currentPositionValueSol = currentValueSol;
+    position.positionValueSol = currentValueSol;
+    position.purchasedTokensRemaining = purchasedTokens;
     position.unrealizedPnlSolCurrent = unrealizedPnlSol;
     position.unrealizedRoiPctCurrent = remainingCostSol > 0 ? (unrealizedPnlSol / remainingCostSol) * 100 : null;
+    livePositions.push(position);
   }
-  const unrealizedPnlSol = positions.reduce((sum, position) => {
+
+  livePositions.sort((a, b) => Number(b.currentPositionValueSol || 0) - Number(a.currentPositionValueSol || 0));
+  dashboard.positions.top = livePositions.slice(0, 6);
+  dashboard.positions.liveFiltered = true;
+  dashboard.positions.suppressedNoCurrentBalance = suppressedNoBalance;
+  dashboard.positions.suppressedUnpricedCurrent = suppressedUnpriced;
+  dashboard.positions.suppressedBelowMaterialCurrent = suppressedBelowMaterial;
+
+  const unrealizedPnlSol = dashboard.positions.top.reduce((sum, position) => {
     const value = Number(position.unrealizedPnlSolCurrent);
     return sum + (Number.isFinite(value) ? value : 0);
   }, 0);
