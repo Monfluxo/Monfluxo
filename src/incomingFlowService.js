@@ -1,4 +1,4 @@
-import { getWalletFundingPage, getWalletRewardsPage } from "./db.js";
+import { getWalletFundingPage, getWalletInboundTransferPage, getWalletRewardsPage } from "./db.js";
 import { getTokenMetadata } from "./helius.js";
 import { getWalletPortfolioSnapshot } from "./walletPortfolioService.js";
 import { getEntityLabels } from "./entityLabelService.js";
@@ -11,12 +11,16 @@ const CACHE_MS = Number(process.env.INCOMING_FLOW_CACHE_MS || 60000);
 const METADATA_CONCURRENCY = Math.max(1, Number(process.env.INCOMING_FLOW_METADATA_CONCURRENCY || 2));
 const cache = new Map();
 
-function mapFunding(row) {
+function blockTime(row) {
+  return row?.block_time ? Math.floor(new Date(row.block_time).getTime() / 1000) : null;
+}
+
+function mapSolFunding(row) {
   return {
     signature: row.signature || null,
-    blockTime: row.block_time ? Math.floor(new Date(row.block_time).getTime() / 1000) : null,
-    assetType: row.asset_type === "SOL" ? "SOL" : "TOKEN",
-    assetId: row.asset_id || null,
+    blockTime: blockTime(row),
+    assetType: "SOL",
+    assetId: "SOL",
     amount: Number(row.amount || 0),
     sourceAddress: row.source_address || null,
     destinationAddress: row.destination_address || null,
@@ -25,10 +29,27 @@ function mapFunding(row) {
   };
 }
 
+function mapInboundTransfer(row) {
+  return {
+    signature: row.signature || null,
+    blockTime: blockTime(row),
+    assetType: "TOKEN",
+    assetId: row.token_mint || null,
+    tokenMint: row.token_mint || null,
+    amount: Number(row.token_amount || 0),
+    sourceAddress: row.source_address || null,
+    destinationAddress: row.destination_address || null,
+    sourceTokenAccount: row.source_token_account || null,
+    destinationTokenAccount: row.destination_token_account || null,
+    parser: row.parser || null,
+    classification: "TRANSFER"
+  };
+}
+
 function mapReward(row) {
   return {
     signature: row.signature || null,
-    blockTime: row.block_time ? Math.floor(new Date(row.block_time).getTime() / 1000) : null,
+    blockTime: blockTime(row),
     assetType: "TOKEN",
     assetId: row.quote_mint || null,
     tokenMint: row.quote_mint || null,
@@ -110,17 +131,18 @@ export async function buildIncomingFlowIntelligence(address) {
   const hit = cache.get(address);
   if (hit && Date.now() - hit.createdAt < CACHE_MS) return hit.value;
 
-  const [funding, rewards, portfolio] = await Promise.all([
-    readAll(getWalletFundingPage, address, mapFunding),
+  const [solFunding, tokenInflows, rewards, portfolio] = await Promise.all([
+    readAll(getWalletFundingPage, address, mapSolFunding),
+    readAll(getWalletInboundTransferPage, address, mapInboundTransfer),
     readAll(getWalletRewardsPage, address, mapReward),
     getWalletPortfolioSnapshot(address).catch(() => ({ status: "unavailable", holdings: [] }))
   ]);
 
+  const funding = [...solFunding, ...tokenInflows];
   const rewardGroups = aggregateRewards(rewards);
   const portfolioByMint = new Map((portfolio?.holdings || []).map((item) => [item.tokenMint, item]));
   const solPriceUsd = await resolveSolPriceUsd(portfolio);
-  const tokenMints = [...new Set([...funding, ...rewardGroups]
-    .filter((event) => event.assetType === "TOKEN")
+  const tokenMints = [...new Set([...tokenInflows, ...rewardGroups]
     .map((event) => event.assetId)
     .filter(Boolean))];
 
@@ -165,8 +187,12 @@ export async function buildIncomingFlowIntelligence(address) {
 
   const all = [...enrichedFunding, ...enrichedRewards];
   const visible = all.filter((event) => Number.isFinite(Number(event.estimatedUsd)) && Number(event.estimatedUsd) >= MIN_USD);
-  const rawHighestValue = [...visible].sort((a, b) => Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0) || Number(b.blockTime || 0) - Number(a.blockTime || 0)).slice(0, 30);
-  const rawLatest = [...visible].sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0) || Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0)).slice(0, 30);
+  const rawHighestValue = [...visible]
+    .sort((a, b) => Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0) || Number(b.blockTime || 0) - Number(a.blockTime || 0))
+    .slice(0, 30);
+  const rawLatest = [...visible]
+    .sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0) || Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0))
+    .slice(0, 30);
   const meaningfulFunding = enrichedFunding.filter(isMeaningfulOrigin);
   const rawFirstFunding = meaningfulFunding.length
     ? [...meaningfulFunding].sort((a, b) => Number(a.blockTime || Number.MAX_SAFE_INTEGER) - Number(b.blockTime || Number.MAX_SAFE_INTEGER))[0]
@@ -190,8 +216,10 @@ export async function buildIncomingFlowIntelligence(address) {
     solPriceUsd,
     solPricingAvailable: Number.isFinite(solPriceUsd) && solPriceUsd > 0,
     scannedFundingEvents: funding.length,
+    scannedNativeSolFundingEvents: solFunding.length,
+    scannedInboundTokenTransfers: tokenInflows.length,
     scannedRewardClaims: rewards.length,
-    historyTruncated: funding.length >= MAX_ROWS || rewards.length >= MAX_ROWS,
+    historyTruncated: solFunding.length >= MAX_ROWS || tokenInflows.length >= MAX_ROWS || rewards.length >= MAX_ROWS,
     hiddenBelowThresholdOrUnpriced: all.length - visible.length,
     highestValue,
     latest,
