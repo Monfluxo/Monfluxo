@@ -1,8 +1,9 @@
 import "./globals.css";
+import "./brand-theme.css";
 
 export const metadata = {
   title: "MONFLUXO Wallet Intelligence",
-  description: "On-chain wallet intelligence for Solana"
+  description: "Cross-chain wallet intelligence"
 };
 
 export default function RootLayout({ children }) {
