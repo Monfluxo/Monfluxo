@@ -11,6 +11,7 @@ const headers = {
   Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
   "Content-Type": "application/json"
 };
+let eventModelV2SchemaPromise = null;
 
 async function request(path, options = {}) {
   const response = await fetch(`${baseUrl}/rest/v1/${path}`, {
@@ -36,17 +37,20 @@ function queryEncode(value) {
 }
 
 export async function assertEventModelV2Schema() {
-  try {
-    await request("wallet_trades?select=wallet_address,signature,event_index,instruction_index,slot&limit=1");
-    await request("wallet_transfers?select=wallet_address,signature,event_index,instruction_index,token_mint,token_amount,slot&limit=1");
-    await request("wallet_rewards?select=wallet_address,signature,instruction_index,slot&limit=1");
-    await request("wallet_funding_events?select=wallet_address,signature,event_index,asset_type,asset_id,amount&limit=1");
-  } catch (error) {
-    throw new Error(
-      `Event Model v2 schema is not ready. Apply the latest migrations in Supabase before reindexing. ${error.message}`
-    );
+  if (!eventModelV2SchemaPromise) {
+    eventModelV2SchemaPromise = Promise.all([
+      request("wallet_trades?select=wallet_address,signature,event_index,instruction_index,slot&limit=1"),
+      request("wallet_transfers?select=wallet_address,signature,event_index,instruction_index,token_mint,token_amount,slot&limit=1"),
+      request("wallet_rewards?select=wallet_address,signature,instruction_index,slot&limit=1"),
+      request("wallet_funding_events?select=wallet_address,signature,event_index,asset_type,asset_id,amount&limit=1")
+    ]).then(() => true).catch((error) => {
+      eventModelV2SchemaPromise = null;
+      throw new Error(
+        `Event Model v2 schema is not ready. Apply the latest migrations in Supabase before reindexing. ${error.message}`
+      );
+    });
   }
-  return true;
+  return eventModelV2SchemaPromise;
 }
 
 export async function walletExists(address) {
