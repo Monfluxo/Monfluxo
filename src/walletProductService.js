@@ -15,6 +15,7 @@ const INDEX_ACTIVE_WINDOW_MS = Number(process.env.INDEX_ACTIVE_WINDOW_MS || 90_0
 const MIN_INCOMING_USD = Number(process.env.MIN_INCOMING_USD || 5);
 const MIN_RANKED_TRADE_COST_SOL = Number(process.env.MIN_RANKED_TRADE_COST_SOL || 0.005);
 const DASHBOARD_SAMPLE_SIZE = 6;
+const METADATA_CONCURRENCY = Math.max(1, Number(process.env.TOKEN_METADATA_CONCURRENCY || 4));
 
 function coverageFromState(state) {
   const historyComplete = state?.history_complete === true;
@@ -78,6 +79,20 @@ function mintForEntity(entity) {
   return null;
 }
 
+async function mapWithConcurrency(items, limit, worker) {
+  const output = new Array(items.length);
+  let cursor = 0;
+  async function run() {
+    while (true) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      output[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return output;
+}
+
 async function enrichTokenMetadata(dashboard) {
   const behavior = dashboard?.behavior || {};
   const entities = [
@@ -94,16 +109,14 @@ async function enrichTokenMetadata(dashboard) {
   ].filter(Boolean);
 
   const mints = [...new Set(entities.map(mintForEntity).filter(Boolean))];
-  const metadataEntries = await Promise.all(
-    mints.map(async (mint) => {
-      try {
-        return [mint, await getTokenMetadata(mint)];
-      } catch (error) {
-        console.warn(`Unable to load metadata for ${mint}: ${error.message}`);
-        return [mint, null];
-      }
-    })
-  );
+  const metadataEntries = await mapWithConcurrency(mints, METADATA_CONCURRENCY, async (mint) => {
+    try {
+      return [mint, await getTokenMetadata(mint)];
+    } catch (error) {
+      console.warn(`Unable to load metadata for ${mint}: ${error.message}`);
+      return [mint, null];
+    }
+  });
 
   const metadataByMint = new Map(metadataEntries);
   for (const entity of entities) {
@@ -113,6 +126,7 @@ async function enrichTokenMetadata(dashboard) {
     entity.tokenName = entity.assetType === "SOL" ? "Solana" : metadata?.name || null;
     entity.tokenSymbol = entity.assetType === "SOL" ? "SOL" : metadata?.symbol || null;
     entity.tokenImage = metadata?.image || null;
+    entity.tokenImageSource = metadata?.imageSource || null;
     entity.priceUsd = Number.isFinite(Number(metadata?.priceUsd)) ? Number(metadata.priceUsd) : null;
     entity.estimatedUsd = entity.priceUsd != null && Number.isFinite(Number(entity.amount))
       ? Number(entity.amount) * entity.priceUsd
@@ -122,15 +136,59 @@ async function enrichTokenMetadata(dashboard) {
   return dashboard;
 }
 
+function aggregateCreatorRewards(events) {
+  const grouped = new Map();
+  for (const event of events) {
+    const mint = event?.tokenMint || event?.assetId;
+    if (!mint) continue;
+    const previous = grouped.get(mint);
+    const amount = Number(event?.amount || 0);
+    const estimatedUsd = Number(event?.estimatedUsd);
+    const blockTime = Number(event?.blockTime || 0);
+
+    if (!previous) {
+      grouped.set(mint, {
+        ...event,
+        assetType: "TOKEN",
+        assetId: mint,
+        tokenMint: mint,
+        classification: "CREATOR_REWARD",
+        amount,
+        estimatedUsd: Number.isFinite(estimatedUsd) ? estimatedUsd : null,
+        claimCount: 1,
+        firstBlockTime: blockTime || null,
+        lastBlockTime: blockTime || null,
+        blockTime: blockTime || null,
+        signature: event?.signature || null
+      });
+      continue;
+    }
+
+    previous.amount += amount;
+    previous.claimCount += 1;
+    if (Number.isFinite(estimatedUsd)) {
+      previous.estimatedUsd = Number(previous.estimatedUsd || 0) + estimatedUsd;
+    }
+    if (blockTime && (!previous.firstBlockTime || blockTime < previous.firstBlockTime)) previous.firstBlockTime = blockTime;
+    if (blockTime && (!previous.lastBlockTime || blockTime > previous.lastBlockTime)) {
+      previous.lastBlockTime = blockTime;
+      previous.blockTime = blockTime;
+      previous.signature = event?.signature || previous.signature;
+    }
+  }
+  return [...grouped.values()];
+}
+
 function filterMeaningfulIncoming(dashboard) {
   const funding = dashboard?.funding || {};
   const rewards = dashboard?.rewards || {};
   const rawFunding = Array.isArray(funding.events) ? funding.events : [];
   const rawRewards = Array.isArray(rewards.events) ? rewards.events : [];
+  const aggregatedRewards = aggregateCreatorRewards(rawRewards);
 
   const keep = (event) => Number.isFinite(Number(event?.estimatedUsd)) && Number(event.estimatedUsd) >= MIN_INCOMING_USD;
   const visibleFunding = rawFunding.filter(keep);
-  const visibleRewards = rawRewards.filter(keep);
+  const visibleRewardGroups = aggregatedRewards.filter(keep);
 
   funding.rawCount = rawFunding.length;
   funding.count = visibleFunding.length;
@@ -141,17 +199,19 @@ function filterMeaningfulIncoming(dashboard) {
     .filter((event) => event.assetType === "SOL")
     .reduce((sum, event) => sum + Number(event.amount || 0), 0);
 
-  rewards.events = visibleRewards;
-  rewards.hiddenBelowThresholdOrUnpriced = rawRewards.length - visibleRewards.length;
+  rewards.aggregatedEvents = aggregatedRewards;
+  rewards.visibleAggregatedEvents = visibleRewardGroups;
+  rewards.hiddenBelowThresholdOrUnpriced = aggregatedRewards.length - visibleRewardGroups.length;
   rewards.minUsd = MIN_INCOMING_USD;
 
   dashboard.incoming = {
     minUsd: MIN_INCOMING_USD,
-    events: [...visibleFunding, ...visibleRewards]
+    events: [...visibleFunding, ...visibleRewardGroups]
       .sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0))
       .slice(0, 30),
     transferCount: visibleFunding.length,
-    rewardCount: visibleRewards.length,
+    rewardCount: visibleRewardGroups.length,
+    rewardClaimCount: visibleRewardGroups.reduce((sum, event) => sum + Number(event.claimCount || 0), 0),
     hiddenBelowThresholdOrUnpriced:
       funding.hiddenBelowThresholdOrUnpriced + rewards.hiddenBelowThresholdOrUnpriced
   };
