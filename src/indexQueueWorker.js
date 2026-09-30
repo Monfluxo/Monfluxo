@@ -1,6 +1,6 @@
 import { syncWalletHistory } from "./sync.js";
 import { analyzeWallet } from "./walletAnalyzer.js";
-import { getSyncState } from "./db.js";
+import { getSyncState, upsertSyncState } from "./db.js";
 import {
   claimWalletIndexJob,
   updateWalletIndexJob
@@ -26,11 +26,67 @@ const maxRuntimeMs = positiveInt(
   process.env.INDEX_WORKER_MAX_RUNTIME_MS,
   2 * 60 * 1000
 );
+const staleSyncMs = positiveInt(
+  process.env.INDEX_WORKER_STALE_SYNC_MS,
+  2 * 60 * 1000
+);
 const pauseMs = Math.max(0, Number(process.env.INDEX_WORKER_PAUSE_MS || 0));
 const idlePollMs = positiveInt(process.env.INDEX_WORKER_IDLE_POLL_MS, 2000);
 const cyclePauseMs = positiveInt(process.env.INDEX_WORKER_CYCLE_PAUSE_MS, 100);
 const runOnce = process.env.INDEX_WORKER_ONCE === "true";
 const storeRaw = process.env.INDEX_WORKER_STORE_RAW === "true";
+
+function stateAgeMs(state) {
+  const stamp = state?.backfill_updated_at || state?.updated_at || state?.last_synced_at;
+  if (!stamp) return Infinity;
+  const ms = new Date(stamp).getTime();
+  return Number.isFinite(ms) ? Math.max(0, Date.now() - ms) : Infinity;
+}
+
+function isTransientError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    message.includes("429") ||
+    message.includes("503") ||
+    message.includes("rate") ||
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("fetch failed") ||
+    message.includes("already in progress")
+  );
+}
+
+async function makeSyncLeaseAvailable(wallet) {
+  const state = await getSyncState(wallet);
+  if (state?.status !== "syncing") return { available: true, recovered: false };
+
+  const ageMs = stateAgeMs(state);
+  if (ageMs >= staleSyncMs) {
+    const now = new Date().toISOString();
+    await upsertSyncState({
+      wallet_address: wallet,
+      status: "idle",
+      updated_at: now
+    });
+    console.warn(
+      `[wallet-index] recovered stale sync lock for ${wallet} ` +
+      `(${Math.round(ageMs / 1000)}s old)`
+    );
+    return { available: true, recovered: true };
+  }
+
+  return { available: false, recovered: false, ageMs };
+}
+
+async function requeueJob(wallet, reason, errorMessage = null) {
+  await updateWalletIndexJob(wallet, {
+    status: "queued",
+    started_at: null,
+    completed_at: null,
+    last_error: errorMessage
+  });
+  console.warn(`[wallet-index] requeued ${wallet}: ${reason}${errorMessage ? ` (${errorMessage})` : ""}`);
+}
 
 async function processJob(job) {
   const wallet = job.wallet_address;
@@ -42,6 +98,19 @@ async function processJob(job) {
   console.log(`[wallet-index] processing ${wallet} (attempt ${job.attempts || 1}, priority ${job.priority || 0})`);
 
   try {
+    const lease = await makeSyncLeaseAvailable(wallet);
+    if (!lease.available) {
+      await requeueJob(wallet, "active_sync_lease");
+      return {
+        wallet,
+        status: "queued",
+        stopReason: "active_sync_lease",
+        batches: 0,
+        pagesProcessed: 0,
+        historyComplete: false
+      };
+    }
+
     while (batches < maxBatchesPerJob) {
       if (Date.now() - startedAt >= maxRuntimeMs) {
         stopReason = "runtime_budget";
@@ -102,14 +171,7 @@ async function processJob(job) {
       );
     }
 
-    await updateWalletIndexJob(wallet, {
-      status: "queued",
-      started_at: null,
-      completed_at: null,
-      last_error: null
-    });
-
-    console.log(`[wallet-index] requeued ${wallet} after ${pagesProcessed} page(s) for fair scheduling`);
+    await requeueJob(wallet, "time_slice_complete");
     return {
       wallet,
       status: "queued",
@@ -119,6 +181,19 @@ async function processJob(job) {
       historyComplete: false
     };
   } catch (error) {
+    if (isTransientError(error)) {
+      await requeueJob(wallet, "transient_error", error.message);
+      return {
+        wallet,
+        status: "queued",
+        stopReason: "transient_error",
+        error: error.message,
+        batches,
+        pagesProcessed,
+        historyComplete: false
+      };
+    }
+
     await updateWalletIndexJob(wallet, {
       status: "error",
       last_error: error.message
@@ -155,7 +230,7 @@ async function runCycle() {
 async function main() {
   console.log(
     `[wallet-index] worker started; polling every ${idlePollMs}ms; ` +
-    `${batchPages} pages/slice, fair scheduling enabled` +
+    `${batchPages} pages/slice, fair scheduling enabled, stale-lock recovery ${Math.round(staleSyncMs / 1000)}s` +
     (runOnce ? " (one-shot mode)" : "")
   );
 
