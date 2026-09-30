@@ -127,11 +127,15 @@ export async function upsertRewards(rows) {
 }
 
 export async function upsertFundingEvents(rows) {
-  if (!rows.length) return;
+  // TOKEN funding is already persisted in wallet_transfers. Keeping another
+  // copy in wallet_funding_events roughly doubles storage for inbound token
+  // movements. From now on this table is native-SOL funding only.
+  const solRows = (rows || []).filter((row) => row?.asset_type === "SOL");
+  if (!solRows.length) return;
   return request("wallet_funding_events?on_conflict=wallet_address,signature,event_index,asset_id", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify(rows)
+    body: JSON.stringify(solRows)
   });
 }
 
@@ -169,10 +173,17 @@ export async function getWalletTransferPage(address, limit = 1000, offset = 0) {
   );
 }
 
+export async function getWalletInboundTransferPage(address, limit = 1000, offset = 0) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
+  return request(
+    `wallet_transfers?wallet_address=eq.${queryEncode(address)}&direction=eq.IN&select=*&order=block_time.desc,slot.desc.nullslast,event_index.desc,signature.desc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+  );
+}
+
 export async function getWalletFundingPage(address, limit = 100, offset = 0) {
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
   return request(
-    `wallet_funding_events?wallet_address=eq.${queryEncode(address)}&select=*&order=block_time.desc,slot.desc.nullslast,event_index.desc,signature.desc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+    `wallet_funding_events?wallet_address=eq.${queryEncode(address)}&asset_type=eq.SOL&select=*&order=block_time.desc,slot.desc.nullslast,event_index.desc,signature.desc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
   );
 }
 
