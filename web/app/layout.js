@@ -3,6 +3,7 @@ import "./brand-theme.css";
 import "./creator-revenue.css";
 import "./pending-states.css";
 import "./incoming-flows.css";
+import "./portfolio-summary.css";
 
 export const metadata = {
   title: "MONFLUXO Wallet Intelligence",
