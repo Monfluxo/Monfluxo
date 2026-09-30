@@ -157,6 +157,20 @@ async function clusterForWallet(address) {
   catch (error) { console.warn(`Unable to build cluster intelligence for ${address}: ${error.message}`); return { methodology: "relationship_score_v1", status: "unavailable", candidateWallets: 0, analyzedCandidateWallets: 0, likelyRelatedWallets: 0, strongestScore: 0, members: [], relationships: [], disclaimer: "Cluster intelligence is temporarily unavailable. Relationship scores never establish human identity or ownership." }; }
 }
 
+function pendingCluster() {
+  return {
+    methodology: "relationship_score_v1",
+    status: "pending_history",
+    candidateWallets: 0,
+    analyzedCandidateWallets: 0,
+    likelyRelatedWallets: 0,
+    strongestScore: 0,
+    members: [],
+    relationships: [],
+    disclaimer: "Cluster intelligence unlocks after historical coverage is complete. Relationship scores never establish human identity or ownership."
+  };
+}
+
 function pendingBehavior() { return { status: "pending_history", sampleSize: 0, behaviorTags: [], longest: [], shortest: [], marketJourney: { status: process.env.BIRDEYE_API_KEY ? "provider_ready" : "awaiting_birdeye", provider: "birdeye", features: ["MFE", "MAE", "profit_capture", "missed_millions", "diamond_hands", "elite_exits", "trade_journey_chart"] } }; }
 
 async function behaviorForWallet(address, historyComplete) {
@@ -168,7 +182,10 @@ async function behaviorForWallet(address, historyComplete) {
 }
 
 async function metricsForRequest(address, stateBefore) {
-  if (stateBefore?.status === "syncing") { const cached = await getAnalysisCache(address); if (cached?.metrics) return sanitizeMetrics(cached.metrics); }
+  if (stateBefore?.history_complete !== true) {
+    const cached = await getAnalysisCache(address);
+    if (cached?.metrics) return sanitizeMetrics(cached.metrics);
+  }
   try { const analysis = await analyzeWallet(address, { mode: "quick" }); return sanitizeMetrics(analysis.metrics); }
   catch (error) { if (!String(error?.message || "").includes("already in progress")) throw error; const cached = await getAnalysisCache(address); if (cached?.metrics) return sanitizeMetrics(cached.metrics); throw error; }
 }
@@ -187,7 +204,10 @@ export async function requestWalletIntelligence(address, options = {}) {
 export async function requestWalletDashboard(address, options = {}) {
   const result = await requestWalletIntelligence(address, options);
   const dashboard = buildWalletDashboardResponse(result);
-  const [cluster, behavior] = await Promise.all([clusterForWallet(address), behaviorForWallet(address, result.coverage.historyComplete)]);
+  const historyComplete = result.coverage.historyComplete === true;
+  const clusterPromise = historyComplete ? clusterForWallet(address) : Promise.resolve(pendingCluster());
+  const behaviorPromise = behaviorForWallet(address, historyComplete);
+  const [cluster, behavior] = await Promise.all([clusterPromise, behaviorPromise]);
   dashboard.cluster = cluster;
   dashboard.behavior = behavior;
   const enriched = await enrichTokenMetadata(dashboard);
