@@ -1,5 +1,6 @@
 import http from "node:http";
 import { requestWalletDashboardWithIntelligence } from "./walletDashboardIntelligenceService.js";
+import { getTokenMetadata } from "./helius.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -27,6 +28,49 @@ function walletFromPath(pathname) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function tokenImageMintFromPath(pathname) {
+  const match = pathname.match(/^\/api\/token-image\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function proxyTokenImage(mint, res) {
+  if (!ADDRESS_RE.test(mint)) {
+    return sendJson(res, 400, { error: "invalid_mint", message: "Invalid Solana token mint." });
+  }
+
+  try {
+    const metadata = await getTokenMetadata(mint);
+    if (!metadata?.image) {
+      return sendJson(res, 404, { error: "image_not_found", message: "No token artwork was resolved." });
+    }
+
+    const response = await fetch(metadata.image, {
+      redirect: "follow",
+      headers: {
+        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 MONFLUXO/1.0"
+      },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!response.ok) {
+      return sendJson(res, 502, { error: "image_fetch_failed", message: `Artwork source returned ${response.status}.` });
+    }
+
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const bytes = Buffer.from(await response.arrayBuffer());
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      "Content-Length": bytes.length,
+      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+      ...corsHeaders()
+    });
+    return res.end(bytes);
+  } catch (error) {
+    console.warn(`Token image proxy failed for ${mint}: ${error.message}`);
+    return sendJson(res, 502, { error: "image_proxy_failed", message: "Unable to load token artwork." });
+  }
+}
+
 export async function handleRequest(req, res) {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
@@ -38,6 +82,9 @@ export async function handleRequest(req, res) {
   if (req.method === "GET" && url.pathname === "/health") {
     return sendJson(res, 200, { ok: true, service: "monfluxo-api" });
   }
+
+  const imageMint = tokenImageMintFromPath(url.pathname);
+  if (req.method === "GET" && imageMint) return proxyTokenImage(imageMint, res);
 
   const wallet = walletFromPath(url.pathname);
   if (req.method === "GET" && wallet) {
