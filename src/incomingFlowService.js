@@ -1,6 +1,7 @@
 import { getWalletFundingPage, getWalletRewardsPage } from "./db.js";
 import { getTokenMetadata } from "./helius.js";
 import { getWalletPortfolioSnapshot } from "./walletPortfolioService.js";
+import { getEntityLabels } from "./entityLabelService.js";
 
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const MIN_USD = Number(process.env.MIN_INCOMING_USD || 5);
@@ -85,15 +86,11 @@ async function mapLimit(items, limit, worker) {
 async function resolveSolPriceUsd(portfolio) {
   const nativePrice = Number(portfolio?.solPriceUsd);
   if (Number.isFinite(nativePrice) && nativePrice > 0) return nativePrice;
-
   try {
     const wrappedSol = await getTokenMetadata(WSOL_MINT);
     const wrappedPrice = Number(wrappedSol?.priceUsd);
     if (Number.isFinite(wrappedPrice) && wrappedPrice > 0) return wrappedPrice;
-  } catch {
-    // Keep the flow available even if SOL cannot be priced in this request.
-  }
-
+  } catch {}
   return null;
 }
 
@@ -102,6 +99,11 @@ function isMeaningfulOrigin(event) {
   if (Number.isFinite(estimatedUsd)) return estimatedUsd >= MIN_USD;
   if (event?.assetType === "SOL") return Number(event.amount || 0) >= MIN_ORIGIN_SOL;
   return false;
+}
+
+function withEntity(event, labels) {
+  if (!event?.sourceAddress) return event;
+  return { ...event, sourceEntity: labels.get(event.sourceAddress) || null };
 }
 
 export async function buildIncomingFlowIntelligence(address) {
@@ -163,12 +165,22 @@ export async function buildIncomingFlowIntelligence(address) {
 
   const all = [...enrichedFunding, ...enrichedRewards];
   const visible = all.filter((event) => Number.isFinite(Number(event.estimatedUsd)) && Number(event.estimatedUsd) >= MIN_USD);
-  const highestValue = [...visible].sort((a, b) => Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0) || Number(b.blockTime || 0) - Number(a.blockTime || 0)).slice(0, 30);
-  const latest = [...visible].sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0) || Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0)).slice(0, 30);
+  const rawHighestValue = [...visible].sort((a, b) => Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0) || Number(b.blockTime || 0) - Number(a.blockTime || 0)).slice(0, 30);
+  const rawLatest = [...visible].sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0) || Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0)).slice(0, 30);
   const meaningfulFunding = enrichedFunding.filter(isMeaningfulOrigin);
-  const firstFunding = meaningfulFunding.length
+  const rawFirstFunding = meaningfulFunding.length
     ? [...meaningfulFunding].sort((a, b) => Number(a.blockTime || Number.MAX_SAFE_INTEGER) - Number(b.blockTime || Number.MAX_SAFE_INTEGER))[0]
     : null;
+
+  const sourceAddresses = [...new Set([
+    ...rawHighestValue.map((x) => x.sourceAddress),
+    ...rawLatest.map((x) => x.sourceAddress),
+    rawFirstFunding?.sourceAddress
+  ].filter(Boolean))];
+  const labels = await getEntityLabels(sourceAddresses).catch(() => new Map());
+  const highestValue = rawHighestValue.map((event) => withEntity(event, labels));
+  const latest = rawLatest.map((event) => withEntity(event, labels));
+  const firstFunding = rawFirstFunding ? withEntity(rawFirstFunding, labels) : null;
 
   const value = {
     status: "ready",
