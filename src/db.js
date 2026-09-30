@@ -14,7 +14,14 @@ const headers = {
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYDCLjv5Az5p7TYE3p3w8uJ";
 const MATERIAL_STABLE_INFLOW = Number(process.env.MATERIAL_STABLE_INFLOW || 5);
+const TRANSACTION_SUMMARY_RETENTION = String(process.env.TRANSACTION_SUMMARY_RETENTION || "economic").toLowerCase();
 const STABLE_MINTS = new Set([USDC_MINT, USDT_MINT]);
+const ECONOMIC_TRANSACTION_TYPES = new Set([
+  "BUY",
+  "SELL",
+  "TRANSFER_OUT",
+  "CREATOR_FEE_CLAIM"
+]);
 let eventModelV2SchemaPromise = null;
 
 async function request(path, options = {}) {
@@ -94,12 +101,19 @@ export async function transactionExists(address, signature) {
   return rows.length > 0;
 }
 
+function retainTransactionSummary(row) {
+  if (TRANSACTION_SUMMARY_RETENTION === "all") return true;
+  if (TRANSACTION_SUMMARY_RETENTION === "none") return false;
+  return ECONOMIC_TRANSACTION_TYPES.has(String(row?.parsed_type || "").toUpperCase());
+}
+
 export async function upsertTransactions(rows) {
-  if (!rows.length) return;
+  const retained = (rows || []).filter(retainTransactionSummary);
+  if (!retained.length) return;
   return request("wallet_transactions?on_conflict=wallet_address,signature", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify(rows)
+    body: JSON.stringify(retained)
   });
 }
 
