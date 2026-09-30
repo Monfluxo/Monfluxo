@@ -73,17 +73,17 @@ async function enrichTokenMetadata(dashboard) {
   return dashboard;
 }
 
-function aggregateCreatorRewards(events) {
+function aggregateCreatorFeeClaims(events) {
   const grouped = new Map();
   for (const event of events) {
-    const mint = event?.tokenMint || event?.assetId;
-    if (!mint) continue;
-    const previous = grouped.get(mint);
+    const payoutMint = event?.tokenMint || event?.assetId;
+    if (!payoutMint) continue;
+    const previous = grouped.get(payoutMint);
     const amount = Number(event?.amount || 0);
     const estimatedUsd = Number(event?.estimatedUsd);
     const blockTime = Number(event?.blockTime || 0);
     if (!previous) {
-      grouped.set(mint, { ...event, assetType: "TOKEN", assetId: mint, tokenMint: mint, classification: "CREATOR_REWARD", amount, estimatedUsd: Number.isFinite(estimatedUsd) ? estimatedUsd : null, claimCount: 1, firstBlockTime: blockTime || null, lastBlockTime: blockTime || null, blockTime: blockTime || null, signature: event?.signature || null });
+      grouped.set(payoutMint, { ...event, assetType: "TOKEN", assetId: payoutMint, tokenMint: payoutMint, payoutMint, classification: "CREATOR_FEE_CLAIM", amount, estimatedUsd: Number.isFinite(estimatedUsd) ? estimatedUsd : null, claimCount: 1, firstBlockTime: blockTime || null, lastBlockTime: blockTime || null, blockTime: blockTime || null, signature: event?.signature || null });
       continue;
     }
     previous.amount += amount;
@@ -100,21 +100,43 @@ function filterMeaningfulIncoming(dashboard) {
   const rewards = dashboard?.rewards || {};
   const rawFunding = Array.isArray(funding.events) ? funding.events : [];
   const rawRewards = Array.isArray(rewards.events) ? rewards.events : [];
-  const aggregatedRewards = aggregateCreatorRewards(rawRewards);
+  const aggregatedClaims = aggregateCreatorFeeClaims(rawRewards);
   const keep = (event) => Number.isFinite(Number(event?.estimatedUsd)) && Number(event.estimatedUsd) >= MIN_INCOMING_USD;
   const visibleFunding = rawFunding.filter(keep);
-  const visibleRewardGroups = aggregatedRewards.filter(keep);
+  const visibleClaimGroups = aggregatedClaims.filter(keep);
+  const totalEstimatedUsd = visibleClaimGroups.reduce((sum, event) => sum + Number(event.estimatedUsd || 0), 0);
+  const visibleClaimCount = visibleClaimGroups.reduce((sum, event) => sum + Number(event.claimCount || 0), 0);
+
   funding.rawCount = rawFunding.length;
   funding.count = visibleFunding.length;
   funding.events = visibleFunding;
   funding.hiddenBelowThresholdOrUnpriced = rawFunding.length - visibleFunding.length;
   funding.minUsd = MIN_INCOMING_USD;
   funding.solTotal = visibleFunding.filter((event) => event.assetType === "SOL").reduce((sum, event) => sum + Number(event.amount || 0), 0);
-  rewards.aggregatedEvents = aggregatedRewards;
-  rewards.visibleAggregatedEvents = visibleRewardGroups;
-  rewards.hiddenBelowThresholdOrUnpriced = aggregatedRewards.length - visibleRewardGroups.length;
+
+  rewards.aggregatedClaims = aggregatedClaims;
+  rewards.visibleAggregatedClaims = visibleClaimGroups;
+  rewards.hiddenBelowThresholdOrUnpriced = aggregatedClaims.length - visibleClaimGroups.length;
   rewards.minUsd = MIN_INCOMING_USD;
-  dashboard.incoming = { minUsd: MIN_INCOMING_USD, events: [...visibleFunding, ...visibleRewardGroups].sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0)).slice(0, 30), transferCount: visibleFunding.length, rewardCount: visibleRewardGroups.length, rewardClaimCount: visibleRewardGroups.reduce((sum, event) => sum + Number(event.claimCount || 0), 0), hiddenBelowThresholdOrUnpriced: funding.hiddenBelowThresholdOrUnpriced + rewards.hiddenBelowThresholdOrUnpriced };
+  rewards.summary = {
+    claimCount: rawRewards.length,
+    visibleClaimCount,
+    payoutAssetCount: aggregatedClaims.length,
+    visiblePayoutAssetCount: visibleClaimGroups.length,
+    estimatedUsdTotal: totalEstimatedUsd,
+    attribution: "payout_asset",
+    sourceTokenAttributionAvailable: false,
+    note: "Pump creator-fee claim instructions identify the payout asset and creator vault, not the coin whose trades originally accrued each fee. Source-token attribution requires a separate fee-accrual index."
+  };
+
+  dashboard.incoming = {
+    minUsd: MIN_INCOMING_USD,
+    events: [...visibleFunding, ...visibleClaimGroups].sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0)).slice(0, 30),
+    transferCount: visibleFunding.length,
+    rewardCount: visibleClaimGroups.length,
+    rewardClaimCount: visibleClaimCount,
+    hiddenBelowThresholdOrUnpriced: funding.hiddenBelowThresholdOrUnpriced + rewards.hiddenBelowThresholdOrUnpriced
+  };
   return dashboard;
 }
 
