@@ -14,6 +14,7 @@ const headers = {
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYDCLjv5Az5p7TYE3p3w8uJ";
 const MATERIAL_STABLE_INFLOW = Number(process.env.MATERIAL_STABLE_INFLOW || 5);
+const MIN_NATIVE_SOL_FUNDING = Number(process.env.MIN_NATIVE_SOL_FUNDING || process.env.MIN_WALLET_ORIGIN_SOL || 0.001);
 const TRANSACTION_SUMMARY_RETENTION = String(process.env.TRANSACTION_SUMMARY_RETENTION || "economic").toLowerCase();
 const STABLE_MINTS = new Set([USDC_MINT, USDT_MINT]);
 const ECONOMIC_TRANSACTION_TYPES = new Set([
@@ -107,8 +108,23 @@ function retainTransactionSummary(row) {
   return ECONOMIC_TRANSACTION_TYPES.has(String(row?.parsed_type || "").toUpperCase());
 }
 
+function uniqueRows(rows, keyFn) {
+  const seen = new Set();
+  const result = [];
+  for (const row of rows || []) {
+    const key = keyFn(row);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(row);
+  }
+  return result;
+}
+
 export async function upsertTransactions(rows) {
-  const retained = (rows || []).filter(retainTransactionSummary);
+  const retained = uniqueRows(
+    (rows || []).filter(retainTransactionSummary),
+    (row) => row?.wallet_address && row?.signature ? `${row.wallet_address}:${row.signature}` : null
+  );
   if (!retained.length) return;
   return request("wallet_transactions?on_conflict=wallet_address,signature", {
     method: "POST",
@@ -127,17 +143,26 @@ export async function upsertTrades(rows) {
 }
 
 function retainTransfer(row) {
-  if (!row?.token_mint) return false;
+  if (!row?.wallet_address || !row?.signature || !row?.token_mint) return false;
+  if (!["IN", "OUT"].includes(row.direction)) return false;
+  const amount = Number(row.token_amount);
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+
   if (!STABLE_MINTS.has(row.token_mint)) return true;
 
   // Stablecoin movement is useful to Incoming Flows only when it represents
   // meaningful external funding. Persisting every USDC/USDT dust movement was
   // the largest source of transfer-table growth in the prototype dataset.
-  return row.direction === "IN" && Number(row.token_amount || 0) >= MATERIAL_STABLE_INFLOW;
+  return row.direction === "IN" && amount >= MATERIAL_STABLE_INFLOW;
 }
 
 export async function upsertTransfers(rows) {
-  const retained = (rows || []).filter(retainTransfer);
+  const retained = uniqueRows(
+    (rows || []).filter(retainTransfer),
+    (row) => row?.wallet_address && row?.signature && Number.isInteger(row?.event_index)
+      ? `${row.wallet_address}:${row.signature}:${row.event_index}`
+      : null
+  );
   if (!retained.length) return;
   return request("wallet_transfers?on_conflict=wallet_address,signature,event_index", {
     method: "POST",
@@ -155,11 +180,23 @@ export async function upsertRewards(rows) {
   });
 }
 
+function retainSolFunding(row) {
+  if (row?.asset_type !== "SOL") return false;
+  if (!row?.wallet_address || !row?.signature) return false;
+  const amount = Number(row.amount);
+  return Number.isFinite(amount) && amount >= MIN_NATIVE_SOL_FUNDING;
+}
+
 export async function upsertFundingEvents(rows) {
-  // TOKEN funding is already persisted in wallet_transfers. Keeping another
-  // copy in wallet_funding_events roughly doubles storage for inbound token
-  // movements. From now on this table is native-SOL funding only.
-  const solRows = (rows || []).filter((row) => row?.asset_type === "SOL");
+  // TOKEN funding is represented by wallet_transfers. Native SOL funding is
+  // retained only when it clears the material-origin floor, so lamport dust
+  // cannot grow this table or create origin/cluster noise.
+  const solRows = uniqueRows(
+    (rows || []).filter(retainSolFunding),
+    (row) => row?.wallet_address && row?.signature && Number.isInteger(row?.event_index)
+      ? `${row.wallet_address}:${row.signature}:${row.event_index}:SOL`
+      : null
+  );
   if (!solRows.length) return;
   return request("wallet_funding_events?on_conflict=wallet_address,signature,event_index,asset_id", {
     method: "POST",
@@ -212,7 +249,7 @@ export async function getWalletInboundTransferPage(address, limit = 1000, offset
 export async function getWalletFundingPage(address, limit = 100, offset = 0) {
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
   return request(
-    `wallet_funding_events?wallet_address=eq.${queryEncode(address)}&asset_type=eq.SOL&select=*&order=block_time.desc,slot.desc.nullslast,event_index.desc,signature.desc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
+    `wallet_funding_events?wallet_address=eq.${queryEncode(address)}&asset_type=eq.SOL&amount=gte.${queryEncode(MIN_NATIVE_SOL_FUNDING)}&select=*&order=block_time.desc,slot.desc.nullslast,event_index.desc,signature.desc&limit=${safeLimit}&offset=${Math.max(0, offset)}`
   );
 }
 
