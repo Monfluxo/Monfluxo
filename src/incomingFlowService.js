@@ -81,6 +81,24 @@ async function mapLimit(items, limit, worker) {
   return output;
 }
 
+async function resolveSolPriceUsd(portfolio) {
+  const nativePrice = Number(portfolio?.solPriceUsd);
+  if (Number.isFinite(nativePrice) && nativePrice > 0) return nativePrice;
+
+  // DAS nativeBalance can intermittently omit price_per_sol even while fungible
+  // metadata pricing works. Never hide meaningful native SOL funding just because
+  // the wallet snapshot did not include a native price in this request.
+  try {
+    const wrappedSol = await getTokenMetadata(WSOL_MINT);
+    const wrappedPrice = Number(wrappedSol?.priceUsd);
+    if (Number.isFinite(wrappedPrice) && wrappedPrice > 0) return wrappedPrice;
+  } catch {
+    // Keep the flow available; unpriced SOL will be surfaced as unpriced below.
+  }
+
+  return null;
+}
+
 export async function buildIncomingFlowIntelligence(address) {
   const hit = cache.get(address);
   if (hit && Date.now() - hit.createdAt < CACHE_MS) return hit.value;
@@ -93,7 +111,7 @@ export async function buildIncomingFlowIntelligence(address) {
 
   const rewardGroups = aggregateRewards(rewards);
   const portfolioByMint = new Map((portfolio?.holdings || []).map((item) => [item.tokenMint, item]));
-  const solPriceUsd = Number(portfolio?.solPriceUsd);
+  const solPriceUsd = await resolveSolPriceUsd(portfolio);
   const tokenMints = [...new Set([...funding, ...rewardGroups]
     .filter((event) => event.assetType === "TOKEN")
     .map((event) => event.assetId)
@@ -142,14 +160,17 @@ export async function buildIncomingFlowIntelligence(address) {
   const visible = all.filter((event) => Number.isFinite(Number(event.estimatedUsd)) && Number(event.estimatedUsd) >= MIN_USD);
   const highestValue = [...visible].sort((a, b) => Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0) || Number(b.blockTime || 0) - Number(a.blockTime || 0)).slice(0, 30);
   const latest = [...visible].sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0) || Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0)).slice(0, 30);
-  const firstFunding = enrichedFunding.length
-    ? [...enrichedFunding].sort((a, b) => Number(a.blockTime || Number.MAX_SAFE_INTEGER) - Number(b.blockTime || Number.MAX_SAFE_INTEGER))[0]
+  const meaningfulFunding = enrichedFunding.filter((event) => Number(event.amount || 0) > 0 && (event.assetType !== "SOL" || Number(event.amount || 0) >= 0.000001));
+  const firstFunding = meaningfulFunding.length
+    ? [...meaningfulFunding].sort((a, b) => Number(a.blockTime || Number.MAX_SAFE_INTEGER) - Number(b.blockTime || Number.MAX_SAFE_INTEGER))[0]
     : null;
 
   const value = {
     status: "ready",
     wallet: address,
     minUsd: MIN_USD,
+    solPriceUsd,
+    solPricingAvailable: Number.isFinite(solPriceUsd) && solPriceUsd > 0,
     scannedFundingEvents: funding.length,
     scannedRewardClaims: rewards.length,
     historyTruncated: funding.length >= MAX_ROWS || rewards.length >= MAX_ROWS,
