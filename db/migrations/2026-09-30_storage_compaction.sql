@@ -20,12 +20,20 @@ and (
   or coalesce(token_amount, 0) < 5
 );
 
--- These two indexes are not used by current read paths. Wallet-scoped reads
--- use idx_wallet_transfers_wallet_time, while uniqueness is enforced by
--- wallet_transfers_wallet_address_signature_event_index_key.
+-- wallet_transactions is only a compact transaction-summary/evidence layer.
+-- The canonical trading, transfer, reward and native-funding facts live in
+-- their dedicated event tables. Keep only summaries that are useful for
+-- economic diagnostics; sync cursors/timestamps live in wallet_sync_state.
+delete from public.wallet_transactions
+where parsed_type is null
+   or parsed_type not in ('BUY', 'SELL', 'TRANSFER_OUT', 'CREATOR_FEE_CLAIM');
+
+-- These indexes are not used by current production read paths.
 drop index if exists public.idx_wallet_transfers_mint_time;
 drop index if exists public.idx_wallet_transfers_wallet_slot;
+drop index if exists public.idx_wallet_transactions_block_time;
 
 -- Refresh planner statistics after the large deletes.
 analyze public.wallet_funding_events;
 analyze public.wallet_transfers;
+analyze public.wallet_transactions;
