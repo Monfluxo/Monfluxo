@@ -14,6 +14,12 @@ import {
   replaceWalletEventsForSignatures
 } from "./db.js";
 
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYDCLjv5Az5p7TYE3p3w8uJ";
+const MATERIAL_STABLE_INFLOW = Number(process.env.MATERIAL_STABLE_INFLOW || 5);
+const TRANSFER_RECENT_GRACE_DAYS = Math.max(1, Number(process.env.TRANSFER_RECENT_GRACE_DAYS || 30));
+const STABLE_MINTS = new Set([USDC_MINT, USDT_MINT]);
+
 function signatureOf(tx) {
   return tx?.transaction?.signatures?.[0] || tx?.signature || null;
 }
@@ -138,26 +144,6 @@ function normalizedTransfer(wallet, transfer) {
   };
 }
 
-function normalizedTokenFunding(wallet, transfer) {
-  return {
-    wallet_address: wallet,
-    signature: transfer.signature,
-    event_index: Number.isInteger(transfer.eventIndex) ? transfer.eventIndex : 0,
-    slot: transfer.slot ?? null,
-    block_time: isoFromBlockTime(transfer.blockTime),
-    asset_type: "TOKEN",
-    asset_id: transfer.mint,
-    amount: transfer.amount,
-    raw_amount: transfer.rawAmount,
-    decimals: transfer.decimals,
-    source_address: transfer.sourceAddress ?? null,
-    destination_address: transfer.destinationAddress ?? wallet,
-    source_token_account: transfer.sourceTokenAccount ?? null,
-    destination_token_account: transfer.destinationTokenAccount ?? null,
-    parser: transfer.parser ?? "token_transfer"
-  };
-}
-
 function normalizedSolFunding(wallet, funding, slot = null) {
   return {
     wallet_address: wallet,
@@ -176,6 +162,42 @@ function normalizedSolFunding(wallet, funding, slot = null) {
     destination_token_account: null,
     parser: funding.parser ?? "system_transfer"
   };
+}
+
+function isRecentBlockTime(blockTime) {
+  if (!Number.isFinite(Number(blockTime))) return false;
+  const cutoff = Math.floor(Date.now() / 1000) - TRANSFER_RECENT_GRACE_DAYS * 86400;
+  return Number(blockTime) >= cutoff;
+}
+
+function shouldPersistTransfer(transfer, relevantMints, mode) {
+  if (!transfer?.mint || !["IN", "OUT"].includes(transfer?.direction)) return false;
+
+  // Quick/incremental windows are intentionally retained in full. They are
+  // small and may contain a transfer that becomes economically relevant later.
+  if (mode !== "deep") return true;
+
+  // Outbound movements can consume purchased inventory. Preserve them and mark
+  // the mint relevant so an older inbound leg encountered later in the reverse
+  // chronological backfill is preserved as well.
+  if (transfer.direction === "OUT") {
+    relevantMints.add(transfer.mint);
+    return true;
+  }
+
+  if (relevantMints.has(transfer.mint)) return true;
+
+  // Preserve recent inbound inventory so a future sale can be attributed
+  // correctly without requiring a historical reindex.
+  if (isRecentBlockTime(transfer.blockTime)) return true;
+
+  // Stablecoin deposits are economically meaningful funding even when they are
+  // never swapped by the indexed wallet.
+  if (STABLE_MINTS.has(transfer.mint) && Number(transfer.amount || 0) >= MATERIAL_STABLE_INFLOW) {
+    return true;
+  }
+
+  return false;
 }
 
 function inventoryRow(map, mint) {
@@ -229,7 +251,6 @@ async function enrichFromTokenAccounts({
   let tokenAccountPages = 0;
   let supplementalTransactionsStored = 0;
   let supplementalTransfersStored = 0;
-  let supplementalFundingStored = 0;
 
   for (const mint of targetMints) {
     const accounts = [...(tokenAccountsByMint.get(mint) || [])];
@@ -250,7 +271,6 @@ async function enrichFromTokenAccounts({
 
         const txRows = [];
         const transferRows = [];
-        const fundingRows = [];
 
         for (const tx of transactions) {
           const signature = signatureOf(tx);
@@ -268,9 +288,6 @@ async function enrichFromTokenAccounts({
           txRows.push(normalizedTransaction(address, tx, analysis, storeRaw));
           for (const transfer of relevantTransfers) {
             transferRows.push(normalizedTransfer(address, transfer));
-            if (transfer.direction === "IN") {
-              fundingRows.push(normalizedTokenFunding(address, { ...transfer, slot: tx?.slot ?? null }));
-            }
           }
           observeAnalysis(inventory, {
             trades: [],
@@ -280,12 +297,10 @@ async function enrichFromTokenAccounts({
 
         await Promise.all([
           upsertTransactions(txRows),
-          upsertTransfers(transferRows),
-          upsertFundingEvents(fundingRows)
+          upsertTransfers(transferRows)
         ]);
         supplementalTransactionsStored += txRows.length;
         supplementalTransfersStored += transferRows.length;
-        supplementalFundingStored += fundingRows.length;
 
         paginationToken = result?.paginationToken || null;
         if (!paginationToken) break;
@@ -299,8 +314,7 @@ async function enrichFromTokenAccounts({
     tokenAccountsScanned,
     tokenAccountPages,
     supplementalTransactionsStored,
-    supplementalTransfersStored,
-    supplementalFundingStored
+    supplementalTransfersStored
   };
 }
 
@@ -354,6 +368,7 @@ export async function syncWalletHistory(address, options = {}) {
   let total = 0;
   let tradesStored = 0;
   let transfersStored = 0;
+  let transfersSkipped = 0;
   let rewardsStored = 0;
   let fundingStored = 0;
   let stoppedOnExisting = false;
@@ -362,6 +377,7 @@ export async function syncWalletHistory(address, options = {}) {
   const inventory = new Map();
   const tokenAccountsByMint = new Map();
   const primarySignatures = new Set();
+  const relevantTransferMints = new Set(STABLE_MINTS);
 
   try {
     while (page < maxPages) {
@@ -412,20 +428,22 @@ export async function syncWalletHistory(address, options = {}) {
         for (const trade of analysis?.trades || []) {
           if (trade?.type === "BUY" || trade?.type === "SELL") {
             tradeRows.push(normalizedTrade(address, trade));
-          }
-        }
-
-        for (const transfer of analysis?.transfers || []) {
-          if (transfer?.direction === "IN" || transfer?.direction === "OUT") {
-            transferRows.push(normalizedTransfer(address, transfer));
-            if (transfer.direction === "IN") {
-              fundingRows.push(normalizedTokenFunding(address, { ...transfer, slot: tx?.slot ?? null }));
-            }
+            if (trade?.tokenMint) relevantTransferMints.add(trade.tokenMint);
           }
         }
 
         for (const reward of analysis?.rewards || []) {
           rewardRows.push(normalizedReward(address, reward));
+          if (reward?.quoteMint) relevantTransferMints.add(reward.quoteMint);
+        }
+
+        for (const transfer of analysis?.transfers || []) {
+          if (transfer?.direction !== "IN" && transfer?.direction !== "OUT") continue;
+          if (shouldPersistTransfer(transfer, relevantTransferMints, mode)) {
+            transferRows.push(normalizedTransfer(address, transfer));
+          } else {
+            transfersSkipped++;
+          }
         }
 
         for (const funding of parseNativeSolFunding(tx, address, {
@@ -547,6 +565,8 @@ export async function syncWalletHistory(address, options = {}) {
       transactionsStored: total,
       tradesStored,
       transfersStored,
+      transfersSkipped,
+      transferRetention: mode === "deep" ? "economic_v1" : "full_recent_window",
       rewardsStored,
       fundingStored,
       tokenAccountEnrichment,
