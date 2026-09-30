@@ -1,5 +1,7 @@
 "use client";
 
+import "./pending-states.css";
+
 export function LoadingDots({ label = "Loading" }) {
   return <span className="loading-dots" aria-label={label}><i/><i/><i/></span>;
 }
