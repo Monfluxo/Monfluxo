@@ -1,11 +1,17 @@
 -- MONFLUXO storage compaction
 -- Apply only after the Supabase project is writable again.
 -- The application now reads token inflows from wallet_transfers and keeps
--- wallet_funding_events for native SOL funding only.
+-- wallet_funding_events for material native SOL funding only.
 
 -- Remove duplicated historical TOKEN funding rows.
 delete from public.wallet_funding_events
 where asset_type = 'TOKEN';
+
+-- Native SOL dust is not useful for Wallet Origin or Cluster Intelligence.
+-- 0.001 SOL is aligned with MIN_WALLET_ORIGIN_SOL / MIN_NATIVE_SOL_FUNDING.
+delete from public.wallet_funding_events
+where asset_type = 'SOL'
+  and coalesce(amount, 0) < 0.001;
 
 -- Stablecoin dust dominated wallet_transfers in the prototype dataset.
 -- Keep only material inbound USDC/USDT funding; trades remain represented in
@@ -19,6 +25,15 @@ and (
   direction <> 'IN'
   or coalesce(token_amount, 0) < 5
 );
+
+-- Remove malformed / economically empty transfer facts. We deliberately do
+-- not use an arbitrary amount floor for non-stable tokens because decimals and
+-- token economics vary widely; relevance pruning is handled by the indexer.
+delete from public.wallet_transfers
+where token_mint is null
+   or direction not in ('IN', 'OUT')
+   or token_amount is null
+   or token_amount <= 0;
 
 -- wallet_transactions is only a compact transaction-summary/evidence layer.
 -- The canonical trading, transfer, reward and native-funding facts live in
