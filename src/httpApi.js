@@ -47,8 +47,6 @@ function tokenImageMintFromPath(pathname) {
 }
 
 async function resolveArtwork(mint) {
-  // Most MONFLUXO assets are Pump or Jupiter indexed. Resolve those public
-  // sources first so artwork rendering does not consume scarce DAS capacity.
   const pump = await getPumpTokenMetadata(mint).catch(() => null);
   if (pump?.image) return pump.image;
   const jupiter = await getJupiterTokenMetadata(mint).catch(() => null);
@@ -147,7 +145,9 @@ export async function handleRequest(req, res) {
     }
 
     try {
-      const priority = Number(url.searchParams.get("priority") || 100);
+      // A wallet requested by the UI is interactive work. Give it a high queue
+      // priority so it does not sit behind stale/background backfills.
+      const priority = Number(url.searchParams.get("priority") || 1000);
       const payload = await requestWalletDashboardWithIntelligence(wallet, { priority });
       return sendJson(res, 200, payload);
     } catch (error) {
