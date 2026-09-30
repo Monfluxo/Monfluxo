@@ -3,9 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node --env-file=.env src/index.js",
     "api": "node --env-file=.env src/httpApi.js",
+    "start:api": "node src/httpApi.js",
+    "start:worker": "node src/indexQueueWorker.js",
     "test": "node --test",
     "analyze:wallet": "node --env-file=.env src/walletAnalyzer.js",
     "product:wallet": "node --env-file=.env src/walletProductService.js",
