@@ -32,7 +32,20 @@ async function request(path, options = {}) {
 function q(value) { return encodeURIComponent(value); }
 
 async function getFunding(address, limit = 500) {
-  return request(`wallet_funding_events?wallet_address=eq.${q(address)}&select=*&order=block_time.desc,slot.desc.nullslast&limit=${limit}`);
+  const [solFunding, tokenInflows] = await Promise.all([
+    request(`wallet_funding_events?wallet_address=eq.${q(address)}&asset_type=eq.SOL&select=*&order=block_time.desc,slot.desc.nullslast&limit=${limit}`),
+    request(`wallet_transfers?wallet_address=eq.${q(address)}&direction=eq.IN&select=source_address,destination_address,token_amount,token_mint,block_time,slot,signature&order=block_time.desc,slot.desc.nullslast&limit=${limit}`)
+  ]);
+
+  return [
+    ...(solFunding || []),
+    ...(tokenInflows || []).map((row) => ({
+      ...row,
+      asset_type: "TOKEN",
+      asset_id: row.token_mint,
+      amount: row.token_amount
+    }))
+  ];
 }
 
 async function getTrades(address, limit = 5000) {
@@ -224,7 +237,7 @@ export async function buildClusterIntelligence(wallet, options = {}) {
   const likely = relationships.filter((x) => x.score >= 45);
 
   return {
-    methodology: "relationship_score_v3_entity_filtered",
+    methodology: "relationship_score_v4_compact_funding",
     disclaimer: "Relationship score estimates on-chain coordination or probable common control. Known exchanges, protocols, routers, bridges and other service entities are excluded from cluster scoring. It does not establish human identity or ownership.",
     minDirectSol: MIN_CLUSTER_SOL,
     candidateWallets: relationships.length,
