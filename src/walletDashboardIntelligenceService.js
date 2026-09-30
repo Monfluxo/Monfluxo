@@ -4,6 +4,7 @@ import { buildPositions, isLowConfidenceDustTrade } from "./positionEngine.js";
 import { buildHoldBehavior } from "./holdIntelligence.js";
 import { buildWalletIntelligenceSummary } from "./intelligenceSummary.js";
 import { buildCreatorRevenueIntelligence } from "./creatorRevenueService.js";
+import { getWalletPortfolioSnapshot, applyPortfolioPricesToDashboard } from "./walletPortfolioService.js";
 
 function mapTrade(row) {
   return {
@@ -119,7 +120,13 @@ export async function requestCreatorRevenue(address) {
 }
 
 export async function requestWalletDashboardWithIntelligence(address, options = {}) {
-  const dashboard = await requestWalletDashboard(address, options);
+  const [dashboard, portfolioResult] = await Promise.all([
+    requestWalletDashboard(address, options),
+    getWalletPortfolioSnapshot(address).catch((error) => ({ status: "unavailable", error: error.message }))
+  ]);
+  applyPortfolioPricesToDashboard(dashboard, portfolioResult);
+  if (!dashboard.portfolio) dashboard.portfolio = portfolioResult;
+
   const historyComplete = dashboard?.coverage?.historyComplete === true;
 
   if (!historyComplete) {
