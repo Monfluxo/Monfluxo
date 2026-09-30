@@ -122,8 +122,6 @@ export async function requestWalletDashboardWithIntelligence(address, options = 
   const dashboard = await requestWalletDashboard(address, options);
   const historyComplete = dashboard?.coverage?.historyComplete === true;
 
-  // Deep behavioral reconstruction can read hundreds of thousands of rows. Never
-  // block a provisional dashboard on it; the indexer will make this final later.
   if (!historyComplete) {
     dashboard.behavior = dashboard.behavior || {
       status: "pending_history",
@@ -135,6 +133,7 @@ export async function requestWalletDashboardWithIntelligence(address, options = 
     dashboard.intelligence = pendingIntelligence();
     dashboard.creatorRevenue = {
       status: "loading",
+      wallet: address,
       source: "pump_fun_public_api",
       topCoins: []
     };
@@ -156,10 +155,9 @@ export async function requestWalletDashboardWithIntelligence(address, options = 
     };
   }
 
-  // Creator revenue is intentionally lazy-loaded through its own endpoint so a
-  // large Pump creator wallet cannot hold the main dashboard response hostage.
   dashboard.creatorRevenue = {
     status: "loading",
+    wallet: address,
     source: "pump_fun_public_api",
     topCoins: []
   };
