@@ -1,4 +1,5 @@
 import { getPumpTokenMetadata } from "./pumpMetadata.js";
+import { getJupiterTokenMetadata } from "./jupiterMetadata.js";
 
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 
@@ -207,6 +208,16 @@ export async function getTokenMetadata(mint) {
     if (!image && dex?.image) {
       image = dex.image;
       imageSource = "dexscreener";
+    }
+  }
+
+  if (!image || !name || !symbol) {
+    const jupiter = await getJupiterTokenMetadata(mint);
+    name = name || jupiter?.name || null;
+    symbol = symbol || jupiter?.symbol || null;
+    if (!image && jupiter?.image) {
+      image = jupiter.image;
+      imageSource = "jupiter";
     }
   }
 
