@@ -1,5 +1,6 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const MIN_CLUSTER_SOL = Number(process.env.MIN_CLUSTER_FUNDING_SOL || 0.001);
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required");
@@ -49,9 +50,16 @@ async function hasAnalyzedData(address) {
   return Array.isArray(rows) && rows.length > 0;
 }
 
+function isMeaningfulFundingEvent(event) {
+  if (!event?.source_address) return false;
+  if (event.asset_type === "SOL") return Number(event.amount || 0) >= MIN_CLUSTER_SOL;
+  return Number(event.amount || 0) > 0;
+}
+
 function sourceStats(events, wallet) {
   const map = new Map();
   for (const event of events || []) {
+    if (!isMeaningfulFundingEvent(event)) continue;
     const source = event.source_address;
     if (!source || source === wallet) continue;
     const row = map.get(source) || {
@@ -136,6 +144,7 @@ function synchronizedTradeStats(aTrades, bTrades, windowSeconds = 60) {
 function fundingSources(events, excluded = new Set()) {
   return new Set(
     (events || [])
+      .filter(isMeaningfulFundingEvent)
       .map((x) => x.source_address)
       .filter((x) => x && !excluded.has(x))
   );
@@ -195,7 +204,7 @@ export async function buildClusterIntelligence(wallet, options = {}) {
   for (const candidateInfo of candidates) {
     const candidate = candidateInfo.wallet;
     const analyzed = await hasAnalyzedData(candidate);
-    let score = candidateInfo.solAmount > 0.001 ? 25 : 10;
+    let score = candidateInfo.solAmount >= MIN_CLUSTER_SOL ? 25 : 10;
     let evidenceCount = 1;
     const signals = {
       directFunding: true,
@@ -220,7 +229,9 @@ export async function buildClusterIntelligence(wallet, options = {}) {
       const dexOverlapPct = jaccardPct(currentDexSet, dexSet(candidateTrades));
       const candidateSources = fundingSources(candidateFunding, new Set([wallet, candidate]));
       const sharedFundingSources = intersectionCount(currentSources, candidateSources);
-      const returnFlow = candidateFunding.some((event) => event.source_address === wallet);
+      const returnFlow = candidateFunding.some((event) =>
+        isMeaningfulFundingEvent(event) && event.source_address === wallet
+      );
 
       signals.tokenOverlapPct = round(overlapPct);
       signals.synchronizedTrades = sync.synchronized;
@@ -276,8 +287,9 @@ export async function buildClusterIntelligence(wallet, options = {}) {
   const likely = relationships.filter((x) => x.score >= 45);
 
   return {
-    methodology: "relationship_score_v1",
+    methodology: "relationship_score_v2_dust_filtered",
     disclaimer: "Relationship score estimates on-chain coordination or probable common control. It does not establish human identity or ownership.",
+    minDirectSol: MIN_CLUSTER_SOL,
     candidateWallets: relationships.length,
     analyzedCandidateWallets: relationships.filter((x) => x.analyzed).length,
     likelyRelatedWallets: likely.length,
