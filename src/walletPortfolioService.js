@@ -1,21 +1,31 @@
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
-const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const CACHE_MS = Number(process.env.PORTFOLIO_CACHE_MS || 30_000);
 const cache = new Map();
 
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
 async function rpc(method, params, id) {
   if (!HELIUS_API_KEY) throw new Error("HELIUS_API_KEY is not configured");
-  const response = await fetch(RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
-    signal: AbortSignal.timeout(8000)
-  });
-  if (!response.ok) throw new Error(`Helius portfolio request failed: ${response.status}`);
-  const payload = await response.json();
-  if (payload.error) throw new Error(payload.error.message || "Helius portfolio RPC error");
-  return payload.result;
+  let attempt = 0;
+  while (true) {
+    const response = await fetch(RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+      signal: AbortSignal.timeout(8000)
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      if (payload.error) throw new Error(payload.error.message || "Helius portfolio RPC error");
+      return payload.result;
+    }
+    if ((response.status !== 429 && response.status !== 503) || attempt >= 3) {
+      throw new Error(`Helius portfolio request failed: ${response.status}`);
+    }
+    await sleep(500 * (2 ** attempt) + Math.floor(Math.random() * 150));
+    attempt++;
+  }
 }
 
 function imageFromAsset(asset) {
@@ -51,20 +61,22 @@ export async function getWalletPortfolioSnapshot(address) {
   const hit = cache.get(address);
   if (hit && Date.now() - hit.createdAt < CACHE_MS) return hit.value;
 
-  const [balanceResult, assetsResult, solAsset] = await Promise.all([
-    rpc("getBalance", [address, { commitment: "confirmed" }], "monfluxo-wallet-sol"),
-    rpc("getAssetsByOwner", {
-      ownerAddress: address,
-      page: 1,
-      limit: 1000,
-      displayOptions: { showFungible: true, showNativeBalance: true, showZeroBalance: false }
-    }, "monfluxo-wallet-assets"),
-    rpc("getAsset", { id: WSOL_MINT, displayOptions: { showFungible: true } }, "monfluxo-sol-price")
-  ]);
+  const assetsResult = await rpc("getAssetsByOwner", {
+    ownerAddress: address,
+    page: 1,
+    limit: 1000,
+    displayOptions: { showFungible: true, showNativeBalance: true, showZeroBalance: false }
+  }, "monfluxo-wallet-assets");
 
-  const solBalance = Number(balanceResult?.value || 0) / 1e9;
-  const solPriceUsd = Number(solAsset?.token_info?.price_info?.price_per_token);
-  const solValueUsd = Number.isFinite(solPriceUsd) && solPriceUsd > 0 ? solBalance * solPriceUsd : null;
+  const native = assetsResult?.nativeBalance || {};
+  const solBalance = Number(native.lamports || 0) / 1e9;
+  const solPriceUsd = Number(native.price_per_sol ?? native.pricePerSol);
+  const explicitSolValue = Number(native.total_price ?? native.totalPrice);
+  const solValueUsd = Number.isFinite(explicitSolValue) && explicitSolValue >= 0
+    ? explicitSolValue
+    : Number.isFinite(solPriceUsd) && solPriceUsd > 0
+      ? solBalance * solPriceUsd
+      : null;
   const holdings = (assetsResult?.items || []).map(normalizeHolding).filter(Boolean);
   const pricedHoldings = holdings.filter((item) => Number.isFinite(item.valueUsd));
   const tokenValueUsd = pricedHoldings.reduce((sum, item) => sum + item.valueUsd, 0);
