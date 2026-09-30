@@ -1,5 +1,5 @@
 import http from "node:http";
-import { requestWalletDashboardWithIntelligence } from "./walletDashboardIntelligenceService.js";
+import { requestWalletDashboardWithIntelligence, requestCreatorRevenue } from "./walletDashboardIntelligenceService.js";
 import { getTokenMetadata } from "./helius.js";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -25,6 +25,11 @@ function sendJson(res, statusCode, body) {
 
 function walletFromPath(pathname) {
   const match = pathname.match(/^\/api\/wallet\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function creatorRevenueWalletFromPath(pathname) {
+  const match = pathname.match(/^\/api\/creator-revenue\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
@@ -85,6 +90,20 @@ export async function handleRequest(req, res) {
 
   const imageMint = tokenImageMintFromPath(url.pathname);
   if (req.method === "GET" && imageMint) return proxyTokenImage(imageMint, res);
+
+  const creatorRevenueWallet = creatorRevenueWalletFromPath(url.pathname);
+  if (req.method === "GET" && creatorRevenueWallet) {
+    if (!ADDRESS_RE.test(creatorRevenueWallet)) {
+      return sendJson(res, 400, { error: "invalid_wallet", message: "Invalid Solana wallet address." });
+    }
+    try {
+      const payload = await requestCreatorRevenue(creatorRevenueWallet);
+      return sendJson(res, 200, payload);
+    } catch (error) {
+      console.error("Creator revenue request failed:", error);
+      return sendJson(res, 500, { error: "creator_revenue_failed", message: "Unable to load creator revenue right now." });
+    }
+  }
 
   const wallet = walletFromPath(url.pathname);
   if (req.method === "GET" && wallet) {
