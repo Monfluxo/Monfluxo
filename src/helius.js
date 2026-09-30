@@ -1,3 +1,5 @@
+import { getPumpTokenMetadata } from "./pumpMetadata.js";
+
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 
 if (!HELIUS_API_KEY) throw new Error("HELIUS_API_KEY is not configured");
@@ -186,6 +188,16 @@ export async function getTokenMetadata(mint) {
   if (!image) {
     image = firstImageCandidate(asset, remote);
     if (image) imageSource = "offchain_metadata";
+  }
+
+  if (!image || !name || !symbol) {
+    const pump = await getPumpTokenMetadata(mint);
+    name = name || pump?.name || null;
+    symbol = symbol || pump?.symbol || null;
+    if (!image && pump?.image) {
+      image = pump.image;
+      imageSource = "pump";
+    }
   }
 
   if (!image || !name || !symbol) {
