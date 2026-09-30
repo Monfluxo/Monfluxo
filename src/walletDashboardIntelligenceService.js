@@ -83,10 +83,7 @@ async function buildBehavioralIntelligence(address, historyComplete) {
     holdBehavior: {
       ...holdBehavior,
       status: historyComplete ? "ready" : "provisional",
-      marketJourney: {
-        status: providerReady ? "provider_ready" : "provider_pending",
-        provider: "birdeye"
-      }
+      marketJourney: { status: providerReady ? "provider_ready" : "provider_pending", provider: "birdeye" }
     },
     intelligence: {
       ...summary,
@@ -104,15 +101,15 @@ function pendingIntelligence() {
     methodology: "explainable_behavior_summary_v1",
     status: "pending_history",
     confidence: "pending",
-    strengths: [],
-    weaknesses: [],
-    observations: [],
-    risk: {},
-    marketIntelligence: {
-      status: process.env.BIRDEYE_API_KEY ? "provider_configured" : "provider_pending",
-      provider: "birdeye"
-    }
+    strengths: [], weaknesses: [], observations: [], risk: {},
+    marketIntelligence: { status: process.env.BIRDEYE_API_KEY ? "provider_configured" : "provider_pending", provider: "birdeye" }
   };
+}
+
+function attachLazyPanels(dashboard, address) {
+  dashboard.creatorRevenue = { status: "loading", wallet: address, source: "pump_fun_public_api", topCoins: [] };
+  dashboard.incoming = { status: "loading", wallet: address, minUsd: Number(process.env.MIN_INCOMING_USD || 5), highestValue: [], latest: [], events: [] };
+  return dashboard;
 }
 
 export async function requestCreatorRevenue(address) {
@@ -126,24 +123,12 @@ export async function requestWalletDashboardWithIntelligence(address, options = 
   ]);
   applyPortfolioPricesToDashboard(dashboard, portfolioResult);
   if (!dashboard.portfolio) dashboard.portfolio = portfolioResult;
+  attachLazyPanels(dashboard, address);
 
   const historyComplete = dashboard?.coverage?.historyComplete === true;
-
   if (!historyComplete) {
-    dashboard.behavior = dashboard.behavior || {
-      status: "pending_history",
-      sampleSize: 0,
-      behaviorTags: [],
-      longest: [],
-      shortest: []
-    };
+    dashboard.behavior = dashboard.behavior || { status: "pending_history", sampleSize: 0, behaviorTags: [], longest: [], shortest: [] };
     dashboard.intelligence = pendingIntelligence();
-    dashboard.creatorRevenue = {
-      status: "loading",
-      wallet: address,
-      source: "pump_fun_public_api",
-      topCoins: []
-    };
     dashboard.responseMode = "fast_snapshot";
     return dashboard;
   }
@@ -154,20 +139,9 @@ export async function requestWalletDashboardWithIntelligence(address, options = 
     dashboard.intelligence = extra.intelligence;
   } catch (error) {
     console.warn(`Unable to build behavioral intelligence for ${address}: ${error?.message || error}`);
-    dashboard.intelligence = {
-      ...pendingIntelligence(),
-      confidence: "unavailable",
-      status: "unavailable",
-      observations: ["Behavioral intelligence is temporarily unavailable."]
-    };
+    dashboard.intelligence = { ...pendingIntelligence(), confidence: "unavailable", status: "unavailable", observations: ["Behavioral intelligence is temporarily unavailable."] };
   }
 
-  dashboard.creatorRevenue = {
-    status: "loading",
-    wallet: address,
-    source: "pump_fun_public_api",
-    topCoins: []
-  };
   dashboard.responseMode = "cached_deep";
   return dashboard;
 }
