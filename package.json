@@ -12,6 +12,7 @@
     "worker:index": "node --env-file=.env src/indexQueueWorker.js",
     "reparse:wallet": "node --env-file=.env src/reparseWallet.js",
     "repair:wallet": "node --env-file=.env src/repairWallet.js",
+    "repair:funding": "node --env-file=.env src/repairNativeFunding.js",
     "regression:wallets": "node --env-file=.env src/regressionWallets.js",
     "backfill:wallet": "node --env-file=.env src/backfillWorker.js",
     "debug:unmatched": "node --env-file=.env src/debugUnmatched.js",
