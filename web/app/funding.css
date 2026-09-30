@@ -10,8 +10,8 @@
 }
 
 .secondary-panel {
-  background: linear-gradient(180deg, rgba(6, 16, 27, .12), rgba(3, 9, 18, .055));
-  border-color: rgba(107,181,255,.12);
+  background: linear-gradient(180deg, rgba(18, 18, 18, .12), rgba(8, 8, 8, .055));
+  border-color: rgba(208, 212, 216, .12);
 }
 
 .funding-summary {
@@ -25,16 +25,16 @@
 .funding-credit-note {
   margin: -4px 0 16px;
   padding: 9px 11px;
-  border: 1px solid rgba(84, 190, 255, .10);
+  border: 1px solid rgba(208, 212, 216, .10);
   border-radius: 11px;
-  background: rgba(3, 12, 22, .08);
-  color: #73889b;
+  background: rgba(10, 10, 10, .08);
+  color: #858b91;
   font-size: 10px;
   line-height: 1.5;
 }
 
 .funding-credit-note strong {
-  color: #a8dce9;
+  color: #cfd3d7;
   font-weight: 750;
 }
 
@@ -61,13 +61,13 @@
 }
 
 .funding-asset strong {
-  color: #edf9ff;
+  color: #eef0f2;
   font-size: 12px;
 }
 
 .funding-asset small {
   margin-top: 3px;
-  color: #71879c;
+  color: #7f858b;
   font-size: 10px;
 }
 
@@ -77,15 +77,15 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: 1px solid rgba(51, 222, 255, .20);
-  background: radial-gradient(circle at 30% 24%, rgba(24,244,223,.20), rgba(24,115,255,.11) 56%, rgba(3,10,18,.12));
-  color: #79f8eb;
-  box-shadow: 0 0 14px rgba(25, 180, 255, .06);
+  border: 1px solid rgba(214, 218, 221, .20);
+  background: radial-gradient(circle at 30% 24%, rgba(239,236,226,.18), rgba(126,128,132,.12) 56%, rgba(8,8,8,.12));
+  color: #ded9ca;
+  box-shadow: 0 0 14px rgba(205, 196, 171, .06);
   font-size: 16px;
 }
 
 .funding-amount {
-  color: #dcecf6;
+  color: #e1e3e5;
   font-weight: 650;
 }
 
@@ -99,34 +99,34 @@
 .wallet-link {
   padding: 0;
   background: transparent;
-  color: #71d9ff;
+  color: #c9cdd1;
   font-size: 11px;
   text-decoration: none;
 }
 
 .wallet-link:hover {
-  color: #a9f5ff;
+  color: #f0ece0;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
 .tx-link {
-  color: #8fa8ba;
+  color: #91979d;
   font-size: 11px;
   text-decoration: none;
 }
 
 .tx-link:hover {
-  color: #7feeff;
+  color: #ded9ca;
 }
 
 .analyze-source {
   white-space: nowrap;
   padding: 7px 10px;
   border-radius: 9px;
-  border: 1px solid rgba(64, 209, 255, .16);
-  background: rgba(13, 121, 180, .055);
-  color: #92ddeb;
+  border: 1px solid rgba(207, 211, 215, .16);
+  background: rgba(185, 177, 153, .055);
+  color: #c9c5b9;
   font-size: 10px;
   font-weight: 750;
   transition: background .16s ease, border-color .16s ease, transform .16s ease;
@@ -134,12 +134,12 @@
 
 .analyze-source:hover {
   transform: translateY(-1px);
-  background: rgba(13, 152, 218, .12);
-  border-color: rgba(84, 220, 255, .30);
+  background: rgba(190, 181, 154, .12);
+  border-color: rgba(220, 214, 197, .30);
 }
 
 .muted {
-  color: #6e8193;
+  color: #7b8187;
   font-size: 11px;
 }
 
@@ -152,9 +152,9 @@
 
 .cluster-overview > div {
   padding: 11px 13px;
-  border: 1px solid rgba(71, 199, 255, .09);
+  border: 1px solid rgba(207, 211, 215, .09);
   border-radius: 12px;
-  background: rgba(3, 12, 22, .065);
+  background: rgba(10, 10, 10, .065);
 }
 
 .cluster-overview strong,
@@ -163,14 +163,14 @@
 }
 
 .cluster-overview strong {
-  color: #dff8ff;
+  color: #eceef0;
   font-size: 18px;
   line-height: 1;
 }
 
 .cluster-overview span {
   margin-top: 6px;
-  color: #70879a;
+  color: #80868c;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: .06em;
@@ -187,18 +187,18 @@
 }
 
 .cluster-score strong {
-  color: #a8f4ff;
+  color: #ddd8ca;
   font-size: 18px;
 }
 
 .cluster-score span {
-  color: #6f8496;
+  color: #7f858a;
   font-size: 10px;
 }
 
 .cluster-data-state {
   margin-top: 5px;
-  color: #687d90;
+  color: #747a80;
   font-size: 9px;
 }
 
@@ -212,11 +212,25 @@
 .evidence-list span {
   padding: 4px 7px;
   border-radius: 999px;
-  border: 1px solid rgba(80, 192, 255, .10);
-  background: rgba(18, 105, 158, .05);
-  color: #91adc1;
+  border: 1px solid rgba(207, 211, 215, .10);
+  background: rgba(185, 177, 153, .05);
+  color: #a8adb2;
   font-size: 9px;
   white-space: nowrap;
+}
+
+/* The raw sum of heterogeneous payout-token units is not a meaningful metric.
+   Keep the claim count visible and suppress the legacy mixed-unit footer. */
+.reward-label {
+  font-size: 0;
+}
+.reward-label::after {
+  content: "creator-fee claims identified";
+  color: #858b91;
+  font-size: 12px;
+}
+.reward-foot {
+  display: none;
 }
 
 @media (max-width: 760px) {
