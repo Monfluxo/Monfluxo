@@ -83,7 +83,7 @@ function aggregateCreatorFeeClaims(events) {
     const estimatedUsd = Number(event?.estimatedUsd);
     const blockTime = Number(event?.blockTime || 0);
     if (!previous) {
-      grouped.set(payoutMint, { ...event, assetType: "TOKEN", assetId: payoutMint, tokenMint: payoutMint, payoutMint, classification: "CREATOR_FEE_CLAIM", amount, estimatedUsd: Number.isFinite(estimatedUsd) ? estimatedUsd : null, claimCount: 1, firstBlockTime: blockTime || null, lastBlockTime: blockTime || null, blockTime: blockTime || null, signature: event?.signature || null });
+      grouped.set(payoutMint, { ...event, assetType: "TOKEN", assetId: payoutMint, tokenMint: payoutMint, payoutMint, classification: "CREATOR_REWARD", eventType: "CREATOR_FEE_CLAIM", amount, estimatedUsd: Number.isFinite(estimatedUsd) ? estimatedUsd : null, claimCount: 1, firstBlockTime: blockTime || null, lastBlockTime: blockTime || null, blockTime: blockTime || null, signature: event?.signature || null });
       continue;
     }
     previous.amount += amount;
