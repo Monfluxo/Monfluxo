@@ -133,7 +133,7 @@ function dexMetadataFromPair(pair, mint) {
 
 async function fetchDexJson(url) {
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(5000) });
+    const response = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "MONFLUXO/1.0" }, signal: AbortSignal.timeout(5000) });
     if (!response.ok) return null;
     return await response.json();
   } catch { return null; }
@@ -141,9 +141,6 @@ async function fetchDexJson(url) {
 
 async function getDexScreenerMetadata(mint) {
   const encoded = encodeURIComponent(mint);
-
-  // Canonical DexScreener token lookup. This response includes pair.info.imageUrl
-  // and is more reliable for artwork than token-pairs on older/migrated tokens.
   const tokenPayload = await fetchDexJson(`https://api.dexscreener.com/latest/dex/tokens/${encoded}`);
   const tokenRows = Array.isArray(tokenPayload?.pairs)
     ? tokenPayload.pairs.filter((pair) => !pair?.chainId || pair.chainId === "solana")
@@ -168,7 +165,13 @@ export async function getTokenMetadata(mint) {
   const cached = tokenMetadataCache.get(mint);
   if (cached && Date.now() - cached.createdAt < TOKEN_METADATA_CACHE_MS) return cached.value;
 
-  const asset = await heliusRequest("getAsset", { id: mint, displayOptions: { showFungible: true } }, "monfluxo-token-metadata");
+  let asset = null;
+  try {
+    asset = await heliusRequest("getAsset", { id: mint, displayOptions: { showFungible: true } }, "monfluxo-token-metadata");
+  } catch (error) {
+    console.warn(`Helius metadata unavailable for ${mint}: ${error.message}. Falling back to public token metadata sources.`);
+  }
+
   let name = asset?.content?.metadata?.name?.trim() || asset?.token_info?.name?.trim() || null;
   let symbol = asset?.content?.metadata?.symbol?.trim() || asset?.token_info?.symbol?.trim() || null;
   const jsonUri = asset?.content?.json_uri || asset?.content?.links?.json || asset?.content?.metadata?.uri || null;
@@ -177,7 +180,7 @@ export async function getTokenMetadata(mint) {
   let imageSource = image ? "helius" : null;
 
   let remote = null;
-  if (!name || !symbol || !image) remote = await fetchJsonMetadata(jsonUri);
+  if (jsonUri && (!name || !symbol || !image)) remote = await fetchJsonMetadata(jsonUri);
   name = name || (typeof remote?.name === "string" ? remote.name.trim() : null);
   symbol = symbol || (typeof remote?.symbol === "string" ? remote.symbol.trim() : null);
   if (!image) {
