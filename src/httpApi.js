@@ -1,6 +1,9 @@
 import http from "node:http";
 import { requestWalletDashboardWithIntelligence, requestCreatorRevenue } from "./walletDashboardIntelligenceService.js";
 import { getTokenMetadata } from "./helius.js";
+import { getPumpTokenMetadata } from "./pumpMetadata.js";
+import { getJupiterTokenMetadata } from "./jupiterMetadata.js";
+import { buildIncomingFlowIntelligence } from "./incomingFlowService.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -33,9 +36,25 @@ function creatorRevenueWalletFromPath(pathname) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function incomingFlowsWalletFromPath(pathname) {
+  const match = pathname.match(/^\/api\/incoming-flows\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 function tokenImageMintFromPath(pathname) {
   const match = pathname.match(/^\/api\/token-image\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function resolveArtwork(mint) {
+  // Most MONFLUXO assets are Pump or Jupiter indexed. Resolve those public
+  // sources first so artwork rendering does not consume scarce DAS capacity.
+  const pump = await getPumpTokenMetadata(mint).catch(() => null);
+  if (pump?.image) return pump.image;
+  const jupiter = await getJupiterTokenMetadata(mint).catch(() => null);
+  if (jupiter?.image) return jupiter.image;
+  const metadata = await getTokenMetadata(mint);
+  return metadata?.image || null;
 }
 
 async function proxyTokenImage(mint, res) {
@@ -44,12 +63,12 @@ async function proxyTokenImage(mint, res) {
   }
 
   try {
-    const metadata = await getTokenMetadata(mint);
-    if (!metadata?.image) {
+    const image = await resolveArtwork(mint);
+    if (!image) {
       return sendJson(res, 404, { error: "image_not_found", message: "No token artwork was resolved." });
     }
 
-    const response = await fetch(metadata.image, {
+    const response = await fetch(image, {
       redirect: "follow",
       headers: {
         Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
@@ -66,7 +85,7 @@ async function proxyTokenImage(mint, res) {
     res.writeHead(200, {
       "Content-Type": contentType,
       "Content-Length": bytes.length,
-      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+      "Cache-Control": "public, max-age=21600, stale-while-revalidate=86400",
       ...corsHeaders()
     });
     return res.end(bytes);
@@ -90,6 +109,19 @@ export async function handleRequest(req, res) {
 
   const imageMint = tokenImageMintFromPath(url.pathname);
   if (req.method === "GET" && imageMint) return proxyTokenImage(imageMint, res);
+
+  const incomingWallet = incomingFlowsWalletFromPath(url.pathname);
+  if (req.method === "GET" && incomingWallet) {
+    if (!ADDRESS_RE.test(incomingWallet)) {
+      return sendJson(res, 400, { error: "invalid_wallet", message: "Invalid Solana wallet address." });
+    }
+    try {
+      return sendJson(res, 200, await buildIncomingFlowIntelligence(incomingWallet));
+    } catch (error) {
+      console.error("Incoming flows request failed:", error);
+      return sendJson(res, 500, { error: "incoming_flows_failed", message: "Unable to load incoming flows right now." });
+    }
+  }
 
   const creatorRevenueWallet = creatorRevenueWalletFromPath(url.pathname);
   if (req.method === "GET" && creatorRevenueWallet) {
