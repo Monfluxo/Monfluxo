@@ -106,6 +106,13 @@ function filterMeaningfulIncoming(dashboard) {
   const visibleClaimGroups = aggregatedClaims.filter(keep);
   const totalEstimatedUsd = visibleClaimGroups.reduce((sum, event) => sum + Number(event.estimatedUsd || 0), 0);
   const visibleClaimCount = visibleClaimGroups.reduce((sum, event) => sum + Number(event.claimCount || 0), 0);
+  const visibleAll = [...visibleFunding, ...visibleClaimGroups];
+  const highestValue = [...visibleAll]
+    .sort((a, b) => Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0) || Number(b.blockTime || 0) - Number(a.blockTime || 0))
+    .slice(0, 30);
+  const latest = [...visibleAll]
+    .sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0) || Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0))
+    .slice(0, 30);
 
   funding.rawCount = rawFunding.length;
   funding.count = visibleFunding.length;
@@ -131,7 +138,10 @@ function filterMeaningfulIncoming(dashboard) {
 
   dashboard.incoming = {
     minUsd: MIN_INCOMING_USD,
-    events: [...visibleFunding, ...visibleClaimGroups].sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0)).slice(0, 30),
+    defaultSort: "highest_value",
+    events: highestValue,
+    highestValue,
+    latest,
     transferCount: visibleFunding.length,
     rewardCount: visibleClaimGroups.length,
     rewardClaimCount: visibleClaimCount,
