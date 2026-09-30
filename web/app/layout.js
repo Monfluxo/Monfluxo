@@ -1,6 +1,7 @@
 import "./globals.css";
 import "./brand-theme.css";
 import "./creator-revenue.css";
+import "./pending-states.css";
 
 export const metadata = {
   title: "MONFLUXO Wallet Intelligence",
