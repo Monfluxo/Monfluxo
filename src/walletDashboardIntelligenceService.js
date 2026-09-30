@@ -98,55 +98,71 @@ async function buildBehavioralIntelligence(address, historyComplete) {
   };
 }
 
+function pendingIntelligence() {
+  return {
+    methodology: "explainable_behavior_summary_v1",
+    status: "pending_history",
+    confidence: "pending",
+    strengths: [],
+    weaknesses: [],
+    observations: [],
+    risk: {},
+    marketIntelligence: {
+      status: process.env.BIRDEYE_API_KEY ? "provider_configured" : "provider_pending",
+      provider: "birdeye"
+    }
+  };
+}
+
+export async function requestCreatorRevenue(address) {
+  return buildCreatorRevenueIntelligence(address);
+}
+
 export async function requestWalletDashboardWithIntelligence(address, options = {}) {
   const dashboard = await requestWalletDashboard(address, options);
+  const historyComplete = dashboard?.coverage?.historyComplete === true;
 
-  const [behaviorResult, creatorRevenueResult] = await Promise.allSettled([
-    buildBehavioralIntelligence(address, dashboard?.coverage?.historyComplete === true),
-    buildCreatorRevenueIntelligence(address)
-  ]);
+  // Deep behavioral reconstruction can read hundreds of thousands of rows. Never
+  // block a provisional dashboard on it; the indexer will make this final later.
+  if (!historyComplete) {
+    dashboard.behavior = dashboard.behavior || {
+      status: "pending_history",
+      sampleSize: 0,
+      behaviorTags: [],
+      longest: [],
+      shortest: []
+    };
+    dashboard.intelligence = pendingIntelligence();
+    dashboard.creatorRevenue = {
+      status: "loading",
+      source: "pump_fun_public_api",
+      topCoins: []
+    };
+    dashboard.responseMode = "fast_snapshot";
+    return dashboard;
+  }
 
-  if (behaviorResult.status === "fulfilled") {
-    const extra = behaviorResult.value;
+  try {
+    const extra = await buildBehavioralIntelligence(address, true);
     if (!dashboard.behavior || dashboard.behavior.status === "unavailable") dashboard.behavior = extra.holdBehavior;
     dashboard.intelligence = extra.intelligence;
-  } else {
-    const error = behaviorResult.reason;
+  } catch (error) {
     console.warn(`Unable to build behavioral intelligence for ${address}: ${error?.message || error}`);
-    dashboard.behavior = dashboard.behavior || {
-      methodology: "purchased_inventory_closed_tokens_v2",
-      status: "unavailable",
-      sampleSize: 0,
-      marketJourney: {
-        status: process.env.BIRDEYE_API_KEY ? "provider_ready" : "provider_pending",
-        provider: "birdeye"
-      }
-    };
     dashboard.intelligence = {
-      methodology: "explainable_behavior_summary_v1",
+      ...pendingIntelligence(),
       confidence: "unavailable",
-      strengths: [],
-      weaknesses: [],
-      observations: ["Behavioral intelligence is temporarily unavailable."],
-      risk: {},
-      marketIntelligence: {
-        status: process.env.BIRDEYE_API_KEY ? "provider_configured" : "provider_pending",
-        provider: "birdeye"
-      }
+      status: "unavailable",
+      observations: ["Behavioral intelligence is temporarily unavailable."]
     };
   }
 
-  dashboard.creatorRevenue = creatorRevenueResult.status === "fulfilled"
-    ? creatorRevenueResult.value
-    : {
-        status: "unavailable",
-        methodology: "pump_fee_distribution_timeline_v1",
-        source: "pump_fun_public_api",
-        error: creatorRevenueResult.reason?.message || String(creatorRevenueResult.reason || "unknown error"),
-        totalCoins: 0,
-        earningCoins: 0,
-        topCoins: []
-      };
-
+  // Creator revenue is intentionally lazy-loaded through its own endpoint so a
+  // large Pump creator wallet cannot hold the main dashboard response hostage.
+  dashboard.creatorRevenue = {
+    status: "loading",
+    source: "pump_fun_public_api",
+    topCoins: []
+  };
+  dashboard.responseMode = "cached_deep";
   return dashboard;
 }
