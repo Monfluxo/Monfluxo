@@ -4,6 +4,7 @@ import { getWalletPortfolioSnapshot } from "./walletPortfolioService.js";
 
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const MIN_USD = Number(process.env.MIN_INCOMING_USD || 5);
+const MIN_ORIGIN_SOL = Number(process.env.MIN_WALLET_ORIGIN_SOL || 0.001);
 const MAX_ROWS = Math.max(500, Number(process.env.INCOMING_FLOW_MAX_ROWS || 10000));
 const CACHE_MS = Number(process.env.INCOMING_FLOW_CACHE_MS || 60000);
 const METADATA_CONCURRENCY = Math.max(1, Number(process.env.INCOMING_FLOW_METADATA_CONCURRENCY || 2));
@@ -85,18 +86,22 @@ async function resolveSolPriceUsd(portfolio) {
   const nativePrice = Number(portfolio?.solPriceUsd);
   if (Number.isFinite(nativePrice) && nativePrice > 0) return nativePrice;
 
-  // DAS nativeBalance can intermittently omit price_per_sol even while fungible
-  // metadata pricing works. Never hide meaningful native SOL funding just because
-  // the wallet snapshot did not include a native price in this request.
   try {
     const wrappedSol = await getTokenMetadata(WSOL_MINT);
     const wrappedPrice = Number(wrappedSol?.priceUsd);
     if (Number.isFinite(wrappedPrice) && wrappedPrice > 0) return wrappedPrice;
   } catch {
-    // Keep the flow available; unpriced SOL will be surfaced as unpriced below.
+    // Keep the flow available even if SOL cannot be priced in this request.
   }
 
   return null;
+}
+
+function isMeaningfulOrigin(event) {
+  const estimatedUsd = Number(event?.estimatedUsd);
+  if (Number.isFinite(estimatedUsd)) return estimatedUsd >= MIN_USD;
+  if (event?.assetType === "SOL") return Number(event.amount || 0) >= MIN_ORIGIN_SOL;
+  return false;
 }
 
 export async function buildIncomingFlowIntelligence(address) {
@@ -160,7 +165,7 @@ export async function buildIncomingFlowIntelligence(address) {
   const visible = all.filter((event) => Number.isFinite(Number(event.estimatedUsd)) && Number(event.estimatedUsd) >= MIN_USD);
   const highestValue = [...visible].sort((a, b) => Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0) || Number(b.blockTime || 0) - Number(a.blockTime || 0)).slice(0, 30);
   const latest = [...visible].sort((a, b) => Number(b.blockTime || 0) - Number(a.blockTime || 0) || Number(b.estimatedUsd || 0) - Number(a.estimatedUsd || 0)).slice(0, 30);
-  const meaningfulFunding = enrichedFunding.filter((event) => Number(event.amount || 0) > 0 && (event.assetType !== "SOL" || Number(event.amount || 0) >= 0.000001));
+  const meaningfulFunding = enrichedFunding.filter(isMeaningfulOrigin);
   const firstFunding = meaningfulFunding.length
     ? [...meaningfulFunding].sort((a, b) => Number(a.blockTime || Number.MAX_SAFE_INTEGER) - Number(b.blockTime || Number.MAX_SAFE_INTEGER))[0]
     : null;
@@ -169,6 +174,7 @@ export async function buildIncomingFlowIntelligence(address) {
     status: "ready",
     wallet: address,
     minUsd: MIN_USD,
+    minOriginSol: MIN_ORIGIN_SOL,
     solPriceUsd,
     solPricingAvailable: Number.isFinite(solPriceUsd) && solPriceUsd > 0,
     scannedFundingEvents: funding.length,
