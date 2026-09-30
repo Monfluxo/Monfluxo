@@ -10,17 +10,26 @@ function signatureOf(transaction) {
   return transaction?.transaction?.signatures?.[0] || transaction?.signature || null;
 }
 
+function accountKeys(transaction) {
+  return [
+    ...(transaction?.transaction?.message?.accountKeys || []),
+    ...(transaction?.meta?.loadedAddresses?.writable || []),
+    ...(transaction?.meta?.loadedAddresses?.readonly || [])
+  ].map(keyValue);
+}
+
 function systemTransfer(instruction) {
   const parsed = instruction?.parsed;
   const info = parsed?.info || {};
   const program = keyValue(instruction?.programId) || instruction?.program || null;
   const isSystem = program === SYSTEM_PROGRAM || program === "system";
+  const parsedType = parsed?.type;
 
-  if (!isSystem || parsed?.type !== "transfer" || !info.source || !info.destination) {
+  if (!isSystem || !["transfer", "transferWithSeed"].includes(parsedType) || !info.source || !info.destination) {
     return null;
   }
 
-  const lamports = Number(info.lamports || 0);
+  const lamports = Number(info.lamports ?? info.amount ?? 0);
   if (!Number.isFinite(lamports) || lamports <= 0) return null;
 
   return {
@@ -28,6 +37,44 @@ function systemTransfer(instruction) {
     destinationAddress: info.destination,
     rawAmount: String(Math.trunc(lamports)),
     amount: lamports / 1e9
+  };
+}
+
+function balanceDeltaFunding(transaction, wallet) {
+  const keys = accountKeys(transaction);
+  const walletIndex = keys.findIndex((key) => key === wallet);
+  if (walletIndex < 0) return null;
+
+  const pre = transaction?.meta?.preBalances || [];
+  const post = transaction?.meta?.postBalances || [];
+  const before = Number(pre[walletIndex]);
+  const after = Number(post[walletIndex]);
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return null;
+
+  const walletDelta = after - before;
+  if (!(walletDelta > 0)) return null;
+
+  let sourceAddress = null;
+  let largestDebit = 0;
+  for (let index = 0; index < Math.min(pre.length, post.length, keys.length); index++) {
+    if (index === walletIndex) continue;
+    const debit = Number(pre[index]) - Number(post[index]);
+    if (Number.isFinite(debit) && debit > largestDebit) {
+      largestDebit = debit;
+      sourceAddress = keys[index] || null;
+    }
+  }
+
+  // A plain external SOL funding transaction should have a counterparty whose
+  // balance decreased materially. This avoids inventing a source for rent-only
+  // or bookkeeping deltas where no external funder can be identified.
+  if (!(largestDebit > 0) || !sourceAddress || sourceAddress === wallet) return null;
+
+  return {
+    sourceAddress,
+    destinationAddress: wallet,
+    rawAmount: String(Math.trunc(walletDelta)),
+    amount: walletDelta / 1e9
   };
 }
 
@@ -81,6 +128,28 @@ export function parseNativeSolFunding(transaction, wallet, options = {}) {
         parser: "system_transfer_inner"
       });
     });
+  }
+
+  // getTransactionsForAddress can return compiled/raw instructions for some
+  // transactions, so the parsed SystemProgram transfer is not always present.
+  // In that case use the wallet's actual lamport balance increase and the
+  // largest external debit as a conservative native-funding fallback.
+  if (!events.length) {
+    const transfer = balanceDeltaFunding(transaction, wallet);
+    if (transfer) {
+      events.push({
+        ...transfer,
+        wallet,
+        signature,
+        blockTime,
+        eventIndex: 999999,
+        instructionIndex: null,
+        assetType: "SOL",
+        assetId: "SOL",
+        decimals: 9,
+        parser: "native_balance_delta"
+      });
+    }
   }
 
   return events;
