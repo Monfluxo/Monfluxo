@@ -11,6 +11,10 @@ const headers = {
   Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
   "Content-Type": "application/json"
 };
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYDCLjv5Az5p7TYE3p3w8uJ";
+const MATERIAL_STABLE_INFLOW = Number(process.env.MATERIAL_STABLE_INFLOW || 5);
+const STABLE_MINTS = new Set([USDC_MINT, USDT_MINT]);
 let eventModelV2SchemaPromise = null;
 
 async function request(path, options = {}) {
@@ -108,12 +112,23 @@ export async function upsertTrades(rows) {
   });
 }
 
+function retainTransfer(row) {
+  if (!row?.token_mint) return false;
+  if (!STABLE_MINTS.has(row.token_mint)) return true;
+
+  // Stablecoin movement is useful to Incoming Flows only when it represents
+  // meaningful external funding. Persisting every USDC/USDT dust movement was
+  // the largest source of transfer-table growth in the prototype dataset.
+  return row.direction === "IN" && Number(row.token_amount || 0) >= MATERIAL_STABLE_INFLOW;
+}
+
 export async function upsertTransfers(rows) {
-  if (!rows.length) return;
+  const retained = (rows || []).filter(retainTransfer);
+  if (!retained.length) return;
   return request("wallet_transfers?on_conflict=wallet_address,signature,event_index", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify(rows)
+    body: JSON.stringify(retained)
   });
 }
 
