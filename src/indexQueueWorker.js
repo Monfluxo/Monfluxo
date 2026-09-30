@@ -15,18 +15,20 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const maxJobsPerCycle = positiveInt(process.env.INDEX_WORKER_MAX_JOBS, 10);
-// Larger batches reduce repeated schema/state/setup work while sync.js still
-// checkpoints the pagination cursor after every page, so progress remains resumable.
+const maxJobsPerCycle = positiveInt(process.env.INDEX_WORKER_MAX_JOBS, 25);
+// A wallet receives one meaningful history slice, then is requeued. This keeps
+// interactive wallets moving instead of allowing one huge wallet to monopolize
+// the single worker for many minutes. If it is the only queued wallet it is
+// immediately claimed again, so single-wallet throughput remains almost the same.
 const batchPages = positiveInt(process.env.INDEX_WORKER_BATCH_PAGES, 50);
-const maxBatchesPerJob = positiveInt(process.env.INDEX_WORKER_MAX_BATCHES, 10);
+const maxBatchesPerJob = positiveInt(process.env.INDEX_WORKER_MAX_BATCHES, 1);
 const maxRuntimeMs = positiveInt(
   process.env.INDEX_WORKER_MAX_RUNTIME_MS,
-  10 * 60 * 1000
+  2 * 60 * 1000
 );
 const pauseMs = Math.max(0, Number(process.env.INDEX_WORKER_PAUSE_MS || 0));
-const idlePollMs = positiveInt(process.env.INDEX_WORKER_IDLE_POLL_MS, 3000);
-const cyclePauseMs = positiveInt(process.env.INDEX_WORKER_CYCLE_PAUSE_MS, 250);
+const idlePollMs = positiveInt(process.env.INDEX_WORKER_IDLE_POLL_MS, 2000);
+const cyclePauseMs = positiveInt(process.env.INDEX_WORKER_CYCLE_PAUSE_MS, 100);
 const runOnce = process.env.INDEX_WORKER_ONCE === "true";
 const storeRaw = process.env.INDEX_WORKER_STORE_RAW === "true";
 
@@ -37,7 +39,7 @@ async function processJob(job) {
   let pagesProcessed = 0;
   let stopReason = "unknown";
 
-  console.log(`[wallet-index] processing ${wallet} (attempt ${job.attempts || 1})`);
+  console.log(`[wallet-index] processing ${wallet} (attempt ${job.attempts || 1}, priority ${job.priority || 0})`);
 
   try {
     while (batches < maxBatchesPerJob) {
@@ -56,7 +58,7 @@ async function processJob(job) {
 
       console.log(
         `[wallet-index] ${wallet} batch ${batches}/${maxBatchesPerJob}: ` +
-        `${Number(sync.pages || 0)} pages (${pagesProcessed} this job)`
+        `${Number(sync.pages || 0)} pages (${pagesProcessed} this slice)`
       );
 
       if (sync.historyComplete === true) {
@@ -107,11 +109,11 @@ async function processJob(job) {
       last_error: null
     });
 
-    console.log(`[wallet-index] requeued ${wallet} (${stopReason}, ${batches} batches, ${pagesProcessed} pages)`);
+    console.log(`[wallet-index] requeued ${wallet} after ${pagesProcessed} page(s) for fair scheduling`);
     return {
       wallet,
       status: "queued",
-      stopReason,
+      stopReason: stopReason === "unknown" ? "time_slice_complete" : stopReason,
       batches,
       pagesProcessed,
       historyComplete: false
@@ -153,7 +155,7 @@ async function runCycle() {
 async function main() {
   console.log(
     `[wallet-index] worker started; polling every ${idlePollMs}ms; ` +
-    `${batchPages} pages/batch, ${maxBatchesPerJob} batches/job` +
+    `${batchPages} pages/slice, fair scheduling enabled` +
     (runOnce ? " (one-shot mode)" : "")
   );
 
