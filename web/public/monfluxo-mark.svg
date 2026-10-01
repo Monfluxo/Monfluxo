@@ -1,29 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 360" role="img" aria-label="MONFLUXO mark">
   <defs>
-    <linearGradient id="goldMetal" x1="85" y1="90" x2="300" y2="310" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff5df"/>
-      <stop offset="0.28" stop-color="#e9c58d"/>
-      <stop offset="0.55" stop-color="#fffaf0"/>
-      <stop offset="0.82" stop-color="#c99554"/>
-      <stop offset="1" stop-color="#8d6636"/>
+    <linearGradient id="goldMetal" x1="82" y1="80" x2="300" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff7e8"/>
+      <stop offset="0.24" stop-color="#e9c58b"/>
+      <stop offset="0.47" stop-color="#fffaf2"/>
+      <stop offset="0.73" stop-color="#d6a663"/>
+      <stop offset="1" stop-color="#7f5b32"/>
     </linearGradient>
-    <linearGradient id="silverMetal" x1="220" y1="95" x2="430" y2="310" gradientUnits="userSpaceOnUse">
+    <linearGradient id="silverMetal" x1="218" y1="82" x2="440" y2="302" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="0.28" stop-color="#cfd2d5"/>
-      <stop offset="0.58" stop-color="#f4f4f3"/>
-      <stop offset="0.82" stop-color="#9a9da1"/>
-      <stop offset="1" stop-color="#65686c"/>
+      <stop offset="0.25" stop-color="#cfd2d6"/>
+      <stop offset="0.48" stop-color="#f8f8f7"/>
+      <stop offset="0.76" stop-color="#a4a7ab"/>
+      <stop offset="1" stop-color="#5f6267"/>
     </linearGradient>
-    <filter id="softGlow" x="-25%" y="-25%" width="150%" height="150%">
-      <feGaussianBlur stdDeviation="7" result="b"/>
-      <feColorMatrix in="b" values="1 0 0 0 .72  0 1 0 0 .48  0 0 1 0 .22  0 0 0 .34 0" result="g"/>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feColorMatrix in="b" values="1 0 0 0 .74 0 1 0 0 .50 0 0 1 0 .25 0 0 0 .22 0" result="g"/>
       <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
   <g fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#softGlow)">
-    <path d="M96 270 C130 188 153 122 198 126 C238 130 253 204 292 270" stroke="url(#goldMetal)" stroke-width="70"/>
-    <path d="M220 270 C262 185 287 124 329 128 C369 132 390 206 422 270" stroke="url(#silverMetal)" stroke-width="70"/>
-    <path d="M101 256 C134 177 156 136 196 138 C226 140 242 192 265 234" stroke="rgba(255,255,255,.38)" stroke-width="8"/>
-    <path d="M229 257 C263 181 290 139 328 140 C360 142 377 193 402 245" stroke="rgba(255,255,255,.24)" stroke-width="7"/>
+    <!-- front champagne ribbon -->
+    <path d="M93 273 C126 198 151 132 195 129 C231 126 250 183 282 245 C291 263 300 278 312 286" stroke="url(#goldMetal)" stroke-width="70"/>
+    <!-- rear silver ribbon crossing through the center -->
+    <path d="M214 264 C250 194 281 129 326 130 C365 131 385 190 418 270" stroke="url(#silverMetal)" stroke-width="70"/>
+    <!-- crossing highlights -->
+    <path d="M104 254 C136 181 158 143 194 142 C221 141 239 183 261 226" stroke="rgba(255,255,255,.34)" stroke-width="7"/>
+    <path d="M228 250 C261 182 290 143 326 143 C354 144 373 190 396 244" stroke="rgba(255,255,255,.22)" stroke-width="6"/>
   </g>
 </svg>
