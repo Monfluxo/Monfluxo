@@ -68,13 +68,32 @@ function tokenImageMintFromPath(pathname) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-async function resolveArtwork(mint) {
-  const pump = await getPumpTokenMetadata(mint).catch(() => null);
-  if (pump?.image) return pump.image;
-  const jupiter = await getJupiterTokenMetadata(mint).catch(() => null);
-  if (jupiter?.image) return jupiter.image;
-  const metadata = await getTokenMetadata(mint);
-  return metadata?.image || null;
+async function resolveArtworkCandidates(mint) {
+  const [pump, jupiter, metadata] = await Promise.all([
+    getPumpTokenMetadata(mint).catch(() => null),
+    getJupiterTokenMetadata(mint).catch(() => null),
+    getTokenMetadata(mint).catch(() => null)
+  ]);
+  return [...new Set([
+    pump?.image,
+    metadata?.image,
+    jupiter?.image
+  ].filter(Boolean))];
+}
+
+async function fetchArtwork(url) {
+  const response = await fetch(url, {
+    redirect: "follow",
+    headers: {
+      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      "User-Agent": "Mozilla/5.0 MONFLUXO/1.0"
+    },
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!response.ok) return null;
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.startsWith("image/")) return null;
+  return { contentType, bytes: Buffer.from(await response.arrayBuffer()) };
 }
 
 async function proxyTokenImage(req, mint, res) {
@@ -83,33 +102,29 @@ async function proxyTokenImage(req, mint, res) {
   }
 
   try {
-    const image = await resolveArtwork(mint);
-    if (!image) {
+    const candidates = await resolveArtworkCandidates(mint);
+    if (!candidates.length) {
       return sendJson(req, res, 404, { error: "image_not_found", message: "No token artwork was resolved." });
     }
 
-    const response = await fetch(image, {
-      redirect: "follow",
-      headers: {
-        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        "User-Agent": "Mozilla/5.0 MONFLUXO/1.0"
-      },
-      signal: AbortSignal.timeout(8000)
-    });
-    if (!response.ok) {
-      return sendJson(req, res, 502, { error: "image_fetch_failed", message: `Artwork source returned ${response.status}.` });
+    for (const image of candidates) {
+      try {
+        const result = await fetchArtwork(image);
+        if (!result) continue;
+        res.writeHead(200, {
+          "Content-Type": result.contentType,
+          "Content-Length": result.bytes.length,
+          "Cache-Control": "public, max-age=21600, stale-while-revalidate=172800",
+          ...securityHeaders(),
+          ...corsHeaders(req)
+        });
+        return res.end(result.bytes);
+      } catch (error) {
+        console.warn(`Artwork source failed for ${mint}: ${error?.message || error}`);
+      }
     }
 
-    const contentType = response.headers.get("content-type") || "image/jpeg";
-    const bytes = Buffer.from(await response.arrayBuffer());
-    res.writeHead(200, {
-      "Content-Type": contentType,
-      "Content-Length": bytes.length,
-      "Cache-Control": "public, max-age=21600, stale-while-revalidate=86400",
-      ...securityHeaders(),
-      ...corsHeaders(req)
-    });
-    return res.end(bytes);
+    return sendJson(req, res, 404, { error: "image_not_found", message: "Resolved artwork sources were unavailable." });
   } catch (error) {
     console.warn(`Token image proxy failed for ${mint}: ${error.message}`);
     return sendJson(req, res, 502, { error: "image_proxy_failed", message: "Unable to load token artwork." });
