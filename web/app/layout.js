@@ -1,6 +1,7 @@
 import "./globals.css";
 import "./brand-theme.css";
 import "./banner-theme.css";
+import "./official-logo-fix.css";
 import "./creator-revenue.css";
 import "./pending-states.css";
 import "./incoming-flows.css";
