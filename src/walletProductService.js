@@ -65,8 +65,8 @@ async function enrichTokenMetadata(dashboard) {
     const metadata = metadataByMint.get(mint);
     entity.tokenName = entity.assetType === "SOL" ? "Solana" : metadata?.name || null;
     entity.tokenSymbol = entity.assetType === "SOL" ? "SOL" : metadata?.symbol || null;
-    entity.tokenImage = metadata?.image ? `/api/token-image/${encodeURIComponent(mint)}` : null;
-    entity.tokenImageSource = metadata?.imageSource || null;
+    entity.tokenImage = `/api/token-image/${encodeURIComponent(mint)}`;
+    entity.tokenImageSource = metadata?.imageSource || "proxy_fallback";
     entity.priceUsd = Number.isFinite(Number(metadata?.priceUsd)) ? Number(metadata.priceUsd) : null;
     entity.estimatedUsd = entity.priceUsd != null && Number.isFinite(Number(entity.amount)) ? Number(entity.amount) * entity.priceUsd : null;
   }
