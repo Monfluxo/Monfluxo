@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" fill="none">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8f6a36" stop-opacity="0"/>
+      <stop offset="0.22" stop-color="#f0c987" stop-opacity="0.48"/>
+      <stop offset="0.52" stop-color="#fff1cf" stop-opacity="0.72"/>
+      <stop offset="0.78" stop-color="#d9a55b" stop-opacity="0.46"/>
+      <stop offset="1" stop-color="#8f6a36" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="silver" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7b7f84" stop-opacity="0"/>
+      <stop offset="0.26" stop-color="#d9dde2" stop-opacity="0.30"/>
+      <stop offset="0.56" stop-color="#ffffff" stop-opacity="0.50"/>
+      <stop offset="0.82" stop-color="#a7aaae" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#7b7f84" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#glow)">
+    <path d="M-100 650 C 220 520 430 770 760 650 S 1280 470 1700 560" stroke="url(#gold)" stroke-width="3.2"/>
+    <path d="M-120 690 C 260 555 470 805 810 688 S 1290 520 1720 605" stroke="url(#silver)" stroke-width="2.2"/>
+    <path d="M-130 735 C 210 610 450 835 800 740 S 1320 575 1710 640" stroke="url(#gold)" stroke-width="1.5" opacity="0.78"/>
+    <path d="M-90 595 C 250 450 520 710 850 585 S 1280 410 1710 505" stroke="url(#silver)" stroke-width="1.2" opacity="0.62"/>
+    <path d="M-80 420 C 280 250 580 500 920 380 S 1300 250 1690 350" stroke="url(#gold)" stroke-width="1.1" opacity="0.42"/>
+    <path d="M-60 330 C 330 160 620 420 980 290 S 1360 160 1680 250" stroke="url(#silver)" stroke-width="0.9" opacity="0.28"/>
+  </g>
+</svg>
