@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 360" role="img" aria-label="MONFLUXO mark">
+  <defs>
+    <linearGradient id="goldMetal" x1="85" y1="90" x2="300" y2="310" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff5df"/>
+      <stop offset="0.28" stop-color="#e9c58d"/>
+      <stop offset="0.55" stop-color="#fffaf0"/>
+      <stop offset="0.82" stop-color="#c99554"/>
+      <stop offset="1" stop-color="#8d6636"/>
+    </linearGradient>
+    <linearGradient id="silverMetal" x1="220" y1="95" x2="430" y2="310" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.28" stop-color="#cfd2d5"/>
+      <stop offset="0.58" stop-color="#f4f4f3"/>
+      <stop offset="0.82" stop-color="#9a9da1"/>
+      <stop offset="1" stop-color="#65686c"/>
+    </linearGradient>
+    <filter id="softGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feColorMatrix in="b" values="1 0 0 0 .72  0 1 0 0 .48  0 0 1 0 .22  0 0 0 .34 0" result="g"/>
+      <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#softGlow)">
+    <path d="M96 270 C130 188 153 122 198 126 C238 130 253 204 292 270" stroke="url(#goldMetal)" stroke-width="70"/>
+    <path d="M220 270 C262 185 287 124 329 128 C369 132 390 206 422 270" stroke="url(#silverMetal)" stroke-width="70"/>
+    <path d="M101 256 C134 177 156 136 196 138 C226 140 242 192 265 234" stroke="rgba(255,255,255,.38)" stroke-width="8"/>
+    <path d="M229 257 C263 181 290 139 328 140 C360 142 377 193 402 245" stroke="rgba(255,255,255,.24)" stroke-width="7"/>
+  </g>
+</svg>

@@ -1,5 +1,4 @@
-<img width="2172" height="724" alt="image" src="https://github.com/user-attachments/assets/8bf37250-6b81-4e12-b36b-a818cafd39e9" />
-
+<img width="2172" height="724" alt="MONFLUXO banner" src="https://github.com/user-attachments/assets/8bf37250-6b81-4e12-b36b-a818cafd39e9" />
 
 # MONFLUXO
 
@@ -53,7 +52,7 @@ MONFLUXO is designed to connect individual transactions into a broader picture.
 
 The long-term goal is to transform:
 
-`RAW TRANSACTIONS → TRADES → POSITIONS → WALLET BEHAVIOR → RELATIONSHIPS → INTELLIGENCE`
+`RAW TRANSACTIONS → EVENTS → TRADES / TRANSFERS / REWARDS → POSITIONS → WALLET BEHAVIOR → RELATIONSHIPS → INTELLIGENCE`
 
 This allows the platform to surface patterns that are difficult to identify when looking at blockchain explorers one transaction at a time.
 
@@ -63,7 +62,7 @@ This allows the platform to surface patterns that are difficult to identify when
 
 The current codebase is organized around a data pipeline that progressively transforms Solana transaction data into higher-level analytics.
 
-```
+```text
 Solana
    │
    ▼
@@ -73,10 +72,16 @@ Helius / RPC data
 Transaction Parser
    │
    ▼
-Swap / Trade Reconstruction
+Event Model v2
+   ├── Trades
+   ├── Transfers
+   └── Rewards
    │
    ▼
-Position Engine
+Persistent Wallet Index
+   │
+   ▼
+Position / PnL Engine
    │
    ▼
 Wallet Analytics
@@ -93,12 +98,15 @@ MONFLUXO
 | Module | Purpose |
 | --- | --- |
 | `src/helius.js` | Solana / Helius data access |
-| `src/parser.js` | Raw transaction parsing |
-| `src/swapParser.js` | Swap and trade reconstruction |
-| `src/positionEngine.js` | Position and PnL logic |
-| `src/index.js` | Application entry point |
+| `src/parser.js` | Transaction classification and event output |
+| `src/eventParser.js` | Multi-event trade and transfer reconstruction |
+| `src/swapParser.js` | Swap reconstruction and creator-fee detection |
+| `src/sync.js` | Incremental/deep wallet indexing |
+| `src/db.js` | Supabase/PostgreSQL persistence |
+| `src/positionEngine.js` | Inventory, position and PnL logic |
+| `src/walletAnalyzer.js` | Wallet-level analytics |
 
-Supporting technical documentation is also maintained in the repository through the **Architecture** and **Data Model** documents.
+Supporting technical documentation is maintained through the **Architecture** and **Data Model** documents.
 
 ---
 
@@ -106,7 +114,7 @@ Supporting technical documentation is also maintained in the repository through 
 
 **Early development — core data and intelligence pipeline under construction.**
 
-The first development phase is focused on reliably transforming raw Solana transactions into structured trades and positions. Once this foundation is stable, MONFLUXO will build persistent wallet intelligence, token analysis and relationship detection on top of it.
+The first development phase is focused on reliably transforming raw Solana transactions into structured events, trades and positions. Once this foundation is validated against real wallet histories, MONFLUXO will build token analysis and relationship intelligence on top of it.
 
 ### Hackathon Roadmap
 
@@ -116,14 +124,18 @@ The first development phase is focused on reliably transforming raw Solana trans
 - [x] Initial transaction parser
 - [x] Initial swap / trade parsing
 - [x] Position engine foundation
-- [ ] Robust BUY / SELL reconstruction
-- [ ] Persistent wallet indexing
+- [x] Persistent wallet indexing foundation
+- [x] Multi-event transaction model (`trades[]`, `transfers[]`, `rewards[]`)
+- [ ] Production migration + historical reindex validation
+- [ ] Robust BUY / SELL reconstruction across the validation set
 
 #### Phase 2 — Wallet Intelligence
-- [ ] Historical wallet analytics
-- [ ] Accurate realized / unrealized PnL
-- [ ] Best / worst trade analysis
-- [ ] Wallet performance metrics
+- [x] Initial historical wallet analytics
+- [x] Transfer-aware inventory accounting
+- [x] Creator rewards separated from trading PnL
+- [ ] Validated realized / unrealized PnL
+- [ ] Best / worst trade validation
+- [ ] Wallet performance metrics validation
 - [ ] Wallet funding and transfer history
 - [ ] Wallet behavioral profiles
 
@@ -150,7 +162,7 @@ The first development phase is focused on reliably transforming raw Solana trans
 - [ ] Real-time Radar
 - [ ] User accounts and monetization
 
-The immediate priority is **Phase 1**: make the underlying transaction and trade data reliable enough to support everything above it.
+The immediate priority remains **Phase 1 validation**: apply Event Model v2 to the production database, reindex the historical test wallet and explain the remaining unmatched/unknown-cost inventory before moving to the product UI.
 
 ---
 
@@ -172,6 +184,157 @@ The goal is to demonstrate that MONFLUXO can move from raw on-chain data to an u
 
 ---
 
+## 🧱 Transaction Event Model v2
+
+A Solana transaction is not assumed to equal one trade.
+
+MONFLUXO now models one signature as a container for zero or more economic events:
+
+```text
+Transaction
+   │
+   ├── Trade #0
+   ├── Trade #1
+   ├── Transfer #0
+   └── Creator Reward #0
+```
+
+The parser exposes:
+
+```js
+{
+  trades: [],
+  transfers: [],
+  rewards: []
+}
+```
+
+`trade` is temporarily retained as an alias for the first trade for backward compatibility with older diagnostics.
+
+Trades are persisted with an `event_index`, allowing multiple BUY/SELL events to share the same Solana signature without overwriting one another.
+
+### Transfer-aware cost basis
+
+Tokens received through a transfer are **not** treated as zero-cost buys. They enter inventory with unknown cost basis until MONFLUXO has evidence establishing their acquisition cost.
+
+When unknown-cost inventory is sold, the proceeds are tracked separately rather than being counted as known realized profit. Wallet analytics expose whether PnL is complete or still contains unknown/unmatched inventory.
+
+---
+
+## 🗄️ Persistent wallet indexing
+
+MONFLUXO does not query an entire wallet history from Helius every time a user opens a wallet. The project includes a PostgreSQL/Supabase persistence layer.
+
+### Data flow
+
+```text
+User wallet
+   │
+   ▼
+Incremental / deep sync
+   │
+   ├── Helius historical data
+   ├── Event parser
+   └── Derived-event replacement
+   │
+   ▼
+Supabase/PostgreSQL
+   │
+   ├── wallet_transactions
+   ├── wallet_trades
+   ├── wallet_transfers
+   ├── wallet_rewards
+   ├── wallet_sync_state
+   └── wallet_analysis_cache
+   │
+   ▼
+Wallet Intelligence
+```
+
+The database becomes MONFLUXO's indexed data layer. Helius is the upstream data provider, not the database queried from scratch for every page view.
+
+### Database setup
+
+1. Create/configure the Supabase project.
+2. Run the base schema for a new project, or apply the migrations for an existing project.
+3. Configure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the backend `.env`.
+4. Never expose the service-role key to the browser or commit it to Git.
+
+For an existing MONFLUXO database, apply:
+
+```text
+db/migrations/2026-09-28_event_model_v2.sql
+```
+
+before running Event Model v2 repair/reindex commands.
+
+### Wallet analysis
+
+Quick scan:
+
+```bash
+npm run analyze:wallet -- <WALLET_ADDRESS> quick
+```
+
+Deep historical repair/reindex:
+
+```bash
+npm run repair:wallet -- <WALLET_ADDRESS>
+```
+
+Inspect one transaction under the new event model:
+
+```bash
+npm run inspect:events -- <SIGNATURE> <WALLET_ADDRESS>
+```
+
+Run focused tests:
+
+```bash
+npm test
+```
+
+### Protection against huge wallets
+
+The current implementation includes:
+
+- Quick scans with a configurable page limit.
+- Deep scans with a separate configurable ceiling.
+- Cursor-based incremental synchronization.
+- Deduplication using indexed signatures.
+- Database persistence of transactions, trades, transfers and rewards.
+- Concurrent-sync protection per wallet.
+- Helius retry/backoff handling for HTTP 429/503 responses.
+- Separate raw-transaction storage control.
+- Paginated database reads for wallet analysis.
+- User-level daily analysis-limit primitives.
+- Usage-event logging for future billing and abuse monitoring.
+- Event Model v2 schema validation before reindexing.
+
+### Important production rule
+
+Do **not** let a public endpoint directly perform an unlimited historical Helius scan.
+
+The intended architecture is:
+
+```text
+Request
+  ↓
+Rate limit / plan check
+  ↓
+Check MONFLUXO database
+  ↓
+Incremental sync if needed
+  ↓
+Read indexed data
+  ↓
+Return analysis
+```
+
+A very large wallet should eventually become a queued job rather than one long public HTTP request, allowing the UI to expose a `syncing → ready` lifecycle.
+
+---
+
 ## 🎯 Vision
 
 > **Don't just look at the blockchain. Understand it.**
@@ -188,19 +351,10 @@ The objective is not to replace a blockchain explorer.
 
 The project currently runs on Node.js with ES modules.
 
-### Environment
-
-Create a local `.env` file based on `.env.example`.
-
-Then install dependencies:
+Create a local `.env` based on `.env.example`, then install dependencies and run the application:
 
 ```bash
 npm install
-```
-
-Run the application:
-
-```bash
 npm start
 ```
 
@@ -208,14 +362,22 @@ npm start
 
 ## 📁 Repository structure
 
-```
+```text
 MONFLUXO/
+├── db/
+│   ├── migrations/
+│   └── schema.sql
 ├── src/
+│   ├── db.js
+│   ├── eventParser.js
 │   ├── helius.js
 │   ├── index.js
 │   ├── parser.js
 │   ├── positionEngine.js
-│   └── swapParser.js
+│   ├── swapParser.js
+│   ├── sync.js
+│   └── walletAnalyzer.js
+├── test/
 ├── Architecture
 ├── Data Model
 ├── .env.example

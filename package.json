@@ -3,7 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-      "start": "node --env-file=.env src/index.js"
-      }
+    "start": "node --env-file=.env src/index.js",
+    "api": "node --env-file=.env src/httpApi.js",
+    "start:api": "node src/httpApi.js",
+    "start:worker": "node src/indexQueueWorker.js",
+    "test": "node --test",
+    "analyze:wallet": "node --env-file=.env src/walletAnalyzer.js",
+    "product:wallet": "node --env-file=.env src/walletProductService.js",
+    "worker:index": "node --env-file=.env src/indexQueueWorker.js",
+    "reparse:wallet": "node --env-file=.env src/reparseWallet.js",
+    "repair:wallet": "node --env-file=.env src/repairWallet.js",
+    "repair:funding": "node --env-file=.env src/repairNativeFunding.js",
+    "repair:funding:all": "node --env-file=.env src/repairAllFunding.js",
+    "regression:wallets": "node --env-file=.env src/regressionWallets.js",
+    "backfill:wallet": "node --env-file=.env src/backfillWorker.js",
+    "debug:unmatched": "node --env-file=.env src/debugUnmatched.js",
+    "inspect:buys": "node --env-file=.env src/inspectMissedBuys.js",
+    "inspect:rewards": "node --env-file=.env src/inspectCreatorRewards.js",
+    "inspect:events": "node --env-file=.env src/inspectEvents.js"
   }
+}

@@ -1,0 +1,294 @@
+import { syncWalletHistory } from "./sync.js";
+import { analyzeWallet } from "./walletAnalyzer.js";
+import { getSyncState, upsertSyncState } from "./db.js";
+import {
+  claimWalletIndexJob,
+  updateWalletIndexJob
+} from "./indexQueue.js";
+
+function positiveInt(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const maxJobsPerCycle = positiveInt(process.env.INDEX_WORKER_MAX_JOBS, 25);
+// A wallet receives one meaningful history slice, then is requeued. This keeps
+// interactive wallets moving instead of allowing one huge wallet to monopolize
+// the single worker for many minutes. If it is the only queued wallet it is
+// immediately claimed again, so single-wallet throughput remains almost the same.
+const batchPages = positiveInt(process.env.INDEX_WORKER_BATCH_PAGES, 50);
+const incrementalPages = positiveInt(process.env.INDEX_WORKER_INCREMENTAL_PAGES, 5);
+const maxBatchesPerJob = positiveInt(process.env.INDEX_WORKER_MAX_BATCHES, 1);
+const maxRuntimeMs = positiveInt(
+  process.env.INDEX_WORKER_MAX_RUNTIME_MS,
+  2 * 60 * 1000
+);
+const staleSyncMs = positiveInt(
+  process.env.INDEX_WORKER_STALE_SYNC_MS,
+  2 * 60 * 1000
+);
+const pauseMs = Math.max(0, Number(process.env.INDEX_WORKER_PAUSE_MS || 0));
+const idlePollMs = positiveInt(process.env.INDEX_WORKER_IDLE_POLL_MS, 2000);
+const cyclePauseMs = positiveInt(process.env.INDEX_WORKER_CYCLE_PAUSE_MS, 100);
+const runOnce = process.env.INDEX_WORKER_ONCE === "true";
+const storeRaw = process.env.INDEX_WORKER_STORE_RAW === "true";
+
+function stateAgeMs(state) {
+  const stamp = state?.backfill_updated_at || state?.updated_at || state?.last_synced_at;
+  if (!stamp) return Infinity;
+  const ms = new Date(stamp).getTime();
+  return Number.isFinite(ms) ? Math.max(0, Date.now() - ms) : Infinity;
+}
+
+function isTransientError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    message.includes("429") ||
+    message.includes("503") ||
+    message.includes("rate") ||
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("fetch failed") ||
+    message.includes("already in progress")
+  );
+}
+
+async function makeSyncLeaseAvailable(wallet) {
+  const state = await getSyncState(wallet);
+  if (state?.status !== "syncing") return { available: true, recovered: false };
+
+  const ageMs = stateAgeMs(state);
+  if (ageMs >= staleSyncMs) {
+    const now = new Date().toISOString();
+    await upsertSyncState({
+      wallet_address: wallet,
+      status: "idle",
+      updated_at: now
+    });
+    console.warn(
+      `[wallet-index] recovered stale sync lock for ${wallet} ` +
+      `(${Math.round(ageMs / 1000)}s old)`
+    );
+    return { available: true, recovered: true };
+  }
+
+  return { available: false, recovered: false, ageMs };
+}
+
+async function requeueJob(wallet, reason, errorMessage = null) {
+  await updateWalletIndexJob(wallet, {
+    status: "queued",
+    started_at: null,
+    completed_at: null,
+    last_error: errorMessage
+  });
+  console.warn(`[wallet-index] requeued ${wallet}: ${reason}${errorMessage ? ` (${errorMessage})` : ""}`);
+}
+
+async function completeIncrementalRefresh(wallet) {
+  const startedAt = Date.now();
+  const sync = await syncWalletHistory(wallet, {
+    mode: "incremental",
+    maxPages: incrementalPages,
+    storeRaw
+  });
+  const analysis = await analyzeWallet(wallet, { mode: "incremental" });
+  await updateWalletIndexJob(wallet, {
+    status: "complete",
+    completed_at: new Date().toISOString(),
+    last_error: null
+  });
+  const elapsedMs = Date.now() - startedAt;
+  console.log(
+    `[wallet-index] incremental refresh complete ${wallet}: ` +
+    `${Number(sync.pages || 0)} page(s), ${elapsedMs}ms`
+  );
+  return {
+    wallet,
+    status: "complete",
+    stopReason: "incremental_refresh",
+    batches: 1,
+    pagesProcessed: Number(sync.pages || 0),
+    historyComplete: true,
+    elapsedMs,
+    generatedAt: analysis.metrics.generatedAt
+  };
+}
+
+async function processJob(job) {
+  const wallet = job.wallet_address;
+  const startedAt = Date.now();
+  let batches = 0;
+  let pagesProcessed = 0;
+  let stopReason = "unknown";
+
+  console.log(`[wallet-index] processing ${wallet} (attempt ${job.attempts || 1}, priority ${job.priority || 0})`);
+
+  try {
+    const lease = await makeSyncLeaseAvailable(wallet);
+    if (!lease.available) {
+      await requeueJob(wallet, "active_sync_lease");
+      return {
+        wallet,
+        status: "queued",
+        stopReason: "active_sync_lease",
+        batches: 0,
+        pagesProcessed: 0,
+        historyComplete: false
+      };
+    }
+
+    // Fully indexed wallets only need the recent delta. A full historical scan is
+    // reserved for wallets whose history is incomplete or explicit repair tooling.
+    const initialState = await getSyncState(wallet);
+    if (initialState?.history_complete === true) {
+      return completeIncrementalRefresh(wallet);
+    }
+
+    while (batches < maxBatchesPerJob) {
+      if (Date.now() - startedAt >= maxRuntimeMs) {
+        stopReason = "runtime_budget";
+        break;
+      }
+
+      batches++;
+      const sync = await syncWalletHistory(wallet, {
+        mode: "deep",
+        maxPages: batchPages,
+        storeRaw
+      });
+      pagesProcessed += Number(sync.pages || 0);
+
+      console.log(
+        `[wallet-index] ${wallet} batch ${batches}/${maxBatchesPerJob}: ` +
+        `${Number(sync.pages || 0)} pages (${pagesProcessed} this slice)`
+      );
+
+      if (sync.historyComplete === true) {
+        stopReason = "history_complete";
+        break;
+      }
+
+      if (!sync.backfillCursorSaved) {
+        stopReason = "no_resume_cursor";
+        break;
+      }
+
+      if (pauseMs > 0) await sleep(pauseMs);
+    }
+
+    const state = await getSyncState(wallet);
+    const historyComplete = state?.history_complete === true;
+
+    if (historyComplete) {
+      const analysis = await analyzeWallet(wallet, { mode: "incremental" });
+      await updateWalletIndexJob(wallet, {
+        status: "complete",
+        completed_at: new Date().toISOString(),
+        last_error: null
+      });
+
+      console.log(`[wallet-index] complete ${wallet} in ${batches} batch(es), ${pagesProcessed} pages`);
+      return {
+        wallet,
+        status: "complete",
+        stopReason,
+        batches,
+        pagesProcessed,
+        generatedAt: analysis.metrics.generatedAt
+      };
+    }
+
+    if (!state?.backfill_pagination_token) {
+      throw new Error(
+        `Indexing stopped without a resume cursor (${stopReason})`
+      );
+    }
+
+    await requeueJob(wallet, "time_slice_complete");
+    return {
+      wallet,
+      status: "queued",
+      stopReason: stopReason === "unknown" ? "time_slice_complete" : stopReason,
+      batches,
+      pagesProcessed,
+      historyComplete: false
+    };
+  } catch (error) {
+    if (isTransientError(error)) {
+      await requeueJob(wallet, "transient_error", error.message);
+      return {
+        wallet,
+        status: "queued",
+        stopReason: "transient_error",
+        error: error.message,
+        batches,
+        pagesProcessed,
+        historyComplete: false
+      };
+    }
+
+    await updateWalletIndexJob(wallet, {
+      status: "error",
+      last_error: error.message
+    });
+    console.error(`[wallet-index] error ${wallet}: ${error.message}`);
+    throw error;
+  }
+}
+
+async function runCycle() {
+  let processed = 0;
+  const results = [];
+
+  while (processed < maxJobsPerCycle) {
+    const job = await claimWalletIndexJob();
+    if (!job) break;
+
+    try {
+      results.push(await processJob(job));
+    } catch (error) {
+      results.push({
+        wallet: job.wallet_address,
+        status: "error",
+        error: error.message
+      });
+    }
+
+    processed++;
+  }
+
+  return { processed, results };
+}
+
+async function main() {
+  console.log(
+    `[wallet-index] worker started; polling every ${idlePollMs}ms; ` +
+    `${batchPages} pages/slice, ${incrementalPages} incremental pages max, fair scheduling enabled, ` +
+    `stale-lock recovery ${Math.round(staleSyncMs / 1000)}s` +
+    (runOnce ? " (one-shot mode)" : "")
+  );
+
+  while (true) {
+    const cycle = await runCycle();
+
+    if (cycle.processed > 0) {
+      console.log(JSON.stringify({
+        worker: "wallet-index",
+        ...cycle
+      }, null, 2));
+    }
+
+    if (runOnce) break;
+    await sleep(cycle.processed === 0 ? idlePollMs : cyclePauseMs);
+  }
+}
+
+main().catch((error) => {
+  console.error("Index queue worker failed:", error.message);
+  process.exit(1);
+});

@@ -1,0 +1,169 @@
+# MONFLUXO — Product Architecture
+
+## Wallet Intelligence request path
+
+MONFLUXO separates the interactive request path from full historical indexing.
+
+A user request must never wait for an entire high-frequency wallet history to be downloaded and reconstructed.
+
+```text
+User opens wallet
+      │
+      ▼
+Fast Scan
+(recent pages only)
+      │
+      ├── recent structured events
+      ├── partial metrics
+      └── coverage metadata
+      │
+      ▼
+Return UI response
+      │
+      ├── status = ready     if history_complete=true
+      └── status = indexing  otherwise
+                              │
+                              ▼
+                    Persistent index job
+                              │
+                              ▼
+                    Cursor-based worker
+                              │
+                    ┌─────────┴─────────┐
+                    ▼                   ▼
+               more history       budget reached
+                    │                   │
+                    ▼                   ▼
+              continue index       requeue job
+                    │
+                    ▼
+             history_complete
+                    │
+                    ▼
+              final analysis
+```
+
+## Fast Scan
+
+Entry point:
+
+```bash
+npm run product:wallet -- <WALLET_ADDRESS>
+```
+
+The product service:
+
+1. Performs a bounded `quick` sync.
+2. Builds currently available wallet metrics.
+3. Reads persistent indexing coverage.
+4. Returns `metricsStatus=partial` when the historical index is incomplete.
+5. Enqueues a persistent background indexing job when needed.
+6. Returns `metricsStatus=final` only when `history_complete=true`.
+
+The UI must never present partial PnL as definitive.
+
+## Persistent Index Queue
+
+Table:
+
+```text
+wallet_index_jobs
+```
+
+Important fields:
+
+- `wallet_address`
+- `status`: `queued | running | complete | error`
+- `priority`
+- `attempts`
+- `requested_at`
+- `started_at`
+- `completed_at`
+- `last_error`
+- `updated_at`
+
+Jobs are unique per wallet.
+
+Enqueueing the same wallet does not create duplicate jobs. A running job is not reset to queued by a repeated user request.
+
+## Worker
+
+Entry point:
+
+```bash
+npm run worker:index
+```
+
+The worker atomically claims jobs with PostgreSQL `FOR UPDATE SKIP LOCKED`, allowing multiple workers to run without processing the same wallet concurrently.
+
+Each job uses the existing persistent Helius pagination cursor. Large histories are processed in bounded batches. When the worker reaches its runtime or batch budget, it requeues the wallet and the next worker pass resumes from the stored cursor.
+
+The worker does not restart historical indexing from the beginning.
+
+When `history_complete=true`, the worker recalculates final wallet analytics and marks the job complete.
+
+## Coverage contract
+
+Wallet product responses expose:
+
+```js
+{
+  status: "ready" | "indexing",
+  metricsStatus: "final" | "partial",
+  coverage: {
+    status: "complete" | "indexing",
+    historyComplete: boolean,
+    backfillPending: boolean,
+    pagesScanned: number,
+    oldestIndexedAt: string | null,
+    newestIndexedAt: string | null,
+    lastSyncedAt: string | null,
+    backfillUpdatedAt: string | null
+  },
+  metrics: {},
+  indexJob: {}
+}
+```
+
+This coverage object is part of the product truth model. MONFLUXO should always distinguish between a metric calculated from complete history and one calculated from partial coverage.
+
+## Accounting confidence
+
+The accounting engine distinguishes:
+
+- Known-cost inventory
+- Unknown-cost inventory
+- Unmatched inventory
+- Low-confidence trade events excluded from accounting
+
+`unknown cost` is not the same as parser failure.
+
+`unmatched` should be treated as an accounting/parser integrity signal once historical coverage is complete.
+
+Low-confidence events remain persisted for auditability even when excluded from PnL and volume metrics.
+
+## Production rule
+
+The public application should call the product service, not `syncWalletHistory(... deep)` directly.
+
+```text
+Frontend
+   │
+   ▼
+Product/API layer
+   │
+   ├── Fast Scan
+   ├── Indexed DB read
+   ├── Coverage state
+   └── Queue request
+             │
+             ▼
+       Index workers
+             │
+             ▼
+        Helius / Solana
+```
+
+The service-role Supabase key and Helius API key must remain backend-only.
+
+Before direct browser access to Supabase is introduced, RLS policies must be designed and enabled for public-facing tables.
