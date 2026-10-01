@@ -1,32 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" fill="none">
-  <defs>
-    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#8a6333" stop-opacity="0"/>
-      <stop offset="0.20" stop-color="#c99555" stop-opacity="0.20"/>
-      <stop offset="0.43" stop-color="#f0ce95" stop-opacity="0.38"/>
-      <stop offset="0.57" stop-color="#fff0d2" stop-opacity="0.52"/>
-      <stop offset="0.78" stop-color="#d4a25f" stop-opacity="0.28"/>
-      <stop offset="1" stop-color="#8a6333" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="silver" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#777a7e" stop-opacity="0"/>
-      <stop offset="0.25" stop-color="#bfc3c8" stop-opacity="0.14"/>
-      <stop offset="0.53" stop-color="#f1f2f3" stop-opacity="0.31"/>
-      <stop offset="0.82" stop-color="#a4a7ab" stop-opacity="0.16"/>
-      <stop offset="1" stop-color="#777a7e" stop-opacity="0"/>
-    </linearGradient>
-    <filter id="soft" x="-25%" y="-25%" width="150%" height="150%">
-      <feGaussianBlur stdDeviation="3" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-  </defs>
-  <g filter="url(#soft)">
-    <path d="M-150 690 C 170 555 380 790 735 660 S 1240 468 1730 565" stroke="url(#gold)" stroke-width="4.2"/>
-    <path d="M-170 726 C 205 585 430 824 790 704 S 1285 514 1740 605" stroke="url(#silver)" stroke-width="3.1"/>
-    <path d="M-150 765 C 235 635 455 846 820 750 S 1335 565 1730 648" stroke="url(#gold)" stroke-width="2.0" opacity="0.72"/>
-    <path d="M-120 628 C 235 485 500 742 852 608 S 1300 420 1715 514" stroke="url(#silver)" stroke-width="1.7" opacity="0.68"/>
-    <path d="M-90 470 C 285 298 565 548 930 420 S 1325 278 1710 372" stroke="url(#gold)" stroke-width="1.5" opacity="0.50"/>
-    <path d="M-75 355 C 325 190 650 450 1015 318 S 1380 185 1685 272" stroke="url(#silver)" stroke-width="1.25" opacity="0.38"/>
-    <path d="M-80 796 C 280 696 520 860 880 790 S 1335 650 1690 690" stroke="url(#gold)" stroke-width="0.9" opacity="0.38"/>
+<defs>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8a6333" stop-opacity="0"/><stop offset=".18" stop-color="#c99555" stop-opacity=".35"/><stop offset=".42" stop-color="#f0ce95" stop-opacity=".7"/><stop offset=".56" stop-color="#fff0d2" stop-opacity=".92"/><stop offset=".78" stop-color="#d4a25f" stop-opacity=".5"/><stop offset="1" stop-color="#8a6333" stop-opacity="0"/></linearGradient>
+  <linearGradient id="silver" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#777a7e" stop-opacity="0"/><stop offset=".25" stop-color="#bfc3c8" stop-opacity=".32"/><stop offset=".52" stop-color="#f1f2f3" stop-opacity=".72"/><stop offset=".82" stop-color="#a4a7ab" stop-opacity=".36"/><stop offset="1" stop-color="#777a7e" stop-opacity="0"/></linearGradient>
+  <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<g filter="url(#glow)" opacity=".92">
+  <g><animateTransform attributeName="transform" type="translate" values="-18 0;18 -8;-18 0" dur="18s" repeatCount="indefinite"/>
+    <path d="M-190 705 C 150 535 365 805 735 652 S 1220 445 1775 555" stroke="url(#gold)" stroke-width="7"/>
+    <path d="M-190 748 C 190 582 420 842 790 704 S 1280 505 1775 606" stroke="url(#silver)" stroke-width="5"/>
+    <path d="M-180 782 C 220 630 470 856 835 752 S 1350 558 1760 656" stroke="url(#gold)" stroke-width="3" opacity=".8"/>
   </g>
+  <g><animateTransform attributeName="transform" type="translate" values="16 -2;-14 8;16 -2" dur="25s" repeatCount="indefinite"/>
+    <path d="M-145 625 C 230 455 505 750 875 595 S 1325 400 1740 505" stroke="url(#silver)" stroke-width="2.8" opacity=".72"/>
+    <path d="M-120 455 C 275 270 600 560 965 407 S 1350 260 1740 355" stroke="url(#gold)" stroke-width="2.4" opacity=".62"/>
+    <path d="M-95 330 C 330 150 675 455 1035 300 S 1410 160 1705 250" stroke="url(#silver)" stroke-width="1.8" opacity=".5"/>
+  </g>
+</g>
 </svg>
