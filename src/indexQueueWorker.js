@@ -21,6 +21,7 @@ const maxJobsPerCycle = positiveInt(process.env.INDEX_WORKER_MAX_JOBS, 25);
 // the single worker for many minutes. If it is the only queued wallet it is
 // immediately claimed again, so single-wallet throughput remains almost the same.
 const batchPages = positiveInt(process.env.INDEX_WORKER_BATCH_PAGES, 50);
+const incrementalPages = positiveInt(process.env.INDEX_WORKER_INCREMENTAL_PAGES, 5);
 const maxBatchesPerJob = positiveInt(process.env.INDEX_WORKER_MAX_BATCHES, 1);
 const maxRuntimeMs = positiveInt(
   process.env.INDEX_WORKER_MAX_RUNTIME_MS,
@@ -88,6 +89,36 @@ async function requeueJob(wallet, reason, errorMessage = null) {
   console.warn(`[wallet-index] requeued ${wallet}: ${reason}${errorMessage ? ` (${errorMessage})` : ""}`);
 }
 
+async function completeIncrementalRefresh(wallet) {
+  const startedAt = Date.now();
+  const sync = await syncWalletHistory(wallet, {
+    mode: "incremental",
+    maxPages: incrementalPages,
+    storeRaw
+  });
+  const analysis = await analyzeWallet(wallet, { mode: "incremental" });
+  await updateWalletIndexJob(wallet, {
+    status: "complete",
+    completed_at: new Date().toISOString(),
+    last_error: null
+  });
+  const elapsedMs = Date.now() - startedAt;
+  console.log(
+    `[wallet-index] incremental refresh complete ${wallet}: ` +
+    `${Number(sync.pages || 0)} page(s), ${elapsedMs}ms`
+  );
+  return {
+    wallet,
+    status: "complete",
+    stopReason: "incremental_refresh",
+    batches: 1,
+    pagesProcessed: Number(sync.pages || 0),
+    historyComplete: true,
+    elapsedMs,
+    generatedAt: analysis.metrics.generatedAt
+  };
+}
+
 async function processJob(job) {
   const wallet = job.wallet_address;
   const startedAt = Date.now();
@@ -109,6 +140,13 @@ async function processJob(job) {
         pagesProcessed: 0,
         historyComplete: false
       };
+    }
+
+    // Fully indexed wallets only need the recent delta. A full historical scan is
+    // reserved for wallets whose history is incomplete or explicit repair tooling.
+    const initialState = await getSyncState(wallet);
+    if (initialState?.history_complete === true) {
+      return completeIncrementalRefresh(wallet);
     }
 
     while (batches < maxBatchesPerJob) {
@@ -230,7 +268,8 @@ async function runCycle() {
 async function main() {
   console.log(
     `[wallet-index] worker started; polling every ${idlePollMs}ms; ` +
-    `${batchPages} pages/slice, fair scheduling enabled, stale-lock recovery ${Math.round(staleSyncMs / 1000)}s` +
+    `${batchPages} pages/slice, ${incrementalPages} incremental pages max, fair scheduling enabled, ` +
+    `stale-lock recovery ${Math.round(staleSyncMs / 1000)}s` +
     (runOnce ? " (one-shot mode)" : "")
   );
 
