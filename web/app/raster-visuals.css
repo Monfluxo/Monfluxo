@@ -27,15 +27,13 @@ body{min-height:100vh!important}
 }
 .topbar{position:relative!important;z-index:2!important}
 
-/* Legacy decorative DOM is disabled. */
 .flow-stage,.flow-svg,.flow-orb,.flow-particles{display:none!important;visibility:hidden!important;opacity:0!important}
 
-/* Render the brand from the real raster WebP file and suppress the old nested image element. */
 .brand-mark,.brand-mark-compact{
   position:relative!important;
   display:block!important;
   background-color:transparent!important;
-  background-image:url('/monfluxo-logo.webp?v=20261002-raster3')!important;
+  background-image:url('/monfluxo-logo-premium.webp?v=20261002-logo-premium1')!important;
   background-position:center!important;
   background-size:contain!important;
   background-repeat:no-repeat!important;
