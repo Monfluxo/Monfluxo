@@ -1,3 +1,4 @@
+// Pump.fun metadata resolver used by the production API.
 function normalizeMediaUri(uri) {
   if (typeof uri !== "string" || !uri.trim()) return null;
   const value = uri.trim();
