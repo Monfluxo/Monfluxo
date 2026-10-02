@@ -3,25 +3,27 @@ import path from 'node:path';
 
 const root = process.cwd();
 const publicDir = path.join(root, 'public');
-const assetsDir = path.join(root, 'assets');
 await mkdir(publicDir, { recursive: true });
 
-async function decode(name) {
-  const source = path.join(assetsDir, `${name}.b64`);
-  const target = path.join(publicDir, name);
+async function decodeText(sourceName, targetName) {
+  const source = path.join(publicDir, sourceName);
+  const target = path.join(publicDir, targetName);
   const b64 = (await readFile(source, 'utf8')).trim();
-  await writeFile(target, Buffer.from(b64, 'base64'));
+  const bytes = Buffer.from(b64, 'base64');
+  if (bytes.subarray(0,4).toString('ascii') !== 'RIFF' || bytes.subarray(8,12).toString('ascii') !== 'WEBP') {
+    throw new Error(`Invalid WebP generated from ${sourceName}`);
+  }
+  await writeFile(target, bytes);
+  console.log(`Prepared ${targetName}: ${bytes.length} bytes`);
 }
 
-await decode('monfluxo-logo.webp');
-await decode('monfluxo-background.webp');
+await decodeText('monfluxo-logo-premium.b64.txt', 'monfluxo-logo-premium.webp');
+await decodeText('monfluxo-background-valid.webp.b64.txt', 'monfluxo-background.webp');
 
-// The repository historically rendered inline/external SVGs in these two helper components.
-// Replace them in the build workspace so the production bundle contains raster assets only.
 const pagePath = path.join(root, 'app', 'page.js');
 let page = await readFile(pagePath, 'utf8');
-page = page.replace(/^function BrandMark.*$/m, 'function BrandMark({compact=false}){return <div className={`brand-mark ${compact?"brand-mark-compact":""}`} aria-label="Monfluxo"><img src="/monfluxo-logo.webp" alt="MONFLUXO"/></div>}');
-page = page.replace(/^function FlowBackground.*$/m, 'function FlowBackground(){return null}');
+page = page.replace(/^function BrandMark.*$/m, 'function BrandMark({compact=false}){return <div className={`brand-mark ${compact?"brand-mark-compact":""}`} aria-label="Monfluxo"><img src="/monfluxo-logo-premium.webp?v=valid-raster" alt="MONFLUXO"/></div>}');
+page = page.replace(/^function FlowBackground.*$/m, 'function FlowBackground(){return <img className="monfluxo-bg-image" src="/monfluxo-background.webp?v=valid-raster" alt="" aria-hidden="true"/>}');
 await writeFile(pagePath, page);
 
-console.log('Prepared MONFLUXO raster logo/background and removed SVG visual helpers from production build.');
+console.log('Validated raster assets prepared and wired directly into the DOM.');
