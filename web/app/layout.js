@@ -1,14 +1,11 @@
 import "./globals.css";
 import "./brand-theme.css";
-import "./official-logo-fix.css";
 import "./creator-revenue.css";
 import "./pending-states.css";
 import "./incoming-flows.css";
 import "./portfolio-summary.css";
 import "./production-ui-fix.css";
-import "./background-image-only.css";
-import "./visual-hard-fix.css";
-import "./mobile-background-fix.css";
+import "./raster-visuals.css";
 
 export const metadata = {
   title: "MONFLUXO Wallet Intelligence",
