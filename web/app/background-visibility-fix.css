@@ -1,0 +1,56 @@
+/* Final background visibility override. Loaded last. */
+.app-shell{
+  background:transparent!important;
+  isolation:isolate!important;
+}
+
+/* The exact banner-derived image is already on .flow-stage in exact-banner-background.css.
+   Keep it above the app-shell background and remove all dark masks that were hiding it. */
+.flow-stage{
+  position:fixed!important;
+  inset:0!important;
+  z-index:1!important;
+  opacity:1!important;
+  visibility:visible!important;
+  display:block!important;
+  pointer-events:none!important;
+  background-position:center center!important;
+  background-size:cover!important;
+  background-repeat:no-repeat!important;
+  filter:brightness(1.18) saturate(1.08)!important;
+}
+.flow-stage::before,
+.flow-stage::after{
+  content:none!important;
+  display:none!important;
+  background:none!important;
+}
+.flow-stage .flow-svg,
+.flow-stage .flow-orb,
+.flow-stage .flow-particles{
+  display:none!important;
+}
+
+.topbar,
+.content{
+  position:relative!important;
+  z-index:3!important;
+}
+
+/* Make the glass cards translucent enough for the banner flow to remain visible. */
+.glass-surface,
+.loading-panel,
+.metric-card,
+.panel,
+.portfolio-kpi,
+.executive-strip{
+  background-color:rgba(6,6,6,.70)!important;
+}
+
+@media(max-width:650px){
+  .flow-stage{
+    background-position:center top!important;
+    background-size:auto 100vh!important;
+    filter:brightness(1.24) saturate(1.10)!important;
+  }
+}
