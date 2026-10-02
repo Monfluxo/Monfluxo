@@ -1,8 +1,13 @@
-/* MONFLUXO visual recovery layer — force one visible background image and one visible logo asset. */
+/* MONFLUXO visual recovery layer — redundant image fallbacks so logo/background cannot disappear. */
 html,body{
   min-height:100%;
   margin:0!important;
-  background:#030303!important;
+  background-color:#030303!important;
+  background-image:url('/monfluxo-background.svg?v=20261002-force3')!important;
+  background-position:center center!important;
+  background-size:cover!important;
+  background-repeat:no-repeat!important;
+  background-attachment:fixed!important;
 }
 body{min-height:100vh!important}
 .app-shell{
@@ -11,12 +16,9 @@ body{min-height:100vh!important}
   isolation:isolate!important;
   background:transparent!important;
 }
-.app-shell:before,.app-shell:after{
-  content:none!important;
-  display:none!important;
-}
+.app-shell:before,.app-shell:after{content:none!important;display:none!important}
 
-/* Use the existing FlowBackground DOM node as a plain fixed image layer. */
+/* Primary fixed image layer. */
 .flow-stage{
   position:fixed!important;
   inset:0!important;
@@ -31,25 +33,29 @@ body{min-height:100vh!important}
   animation:none!important;
   transform:none!important;
   filter:none!important;
-  background:#030303 url('/monfluxo-background.svg?v=20261002-force2') center center / cover no-repeat!important;
+  background-color:#030303!important;
+  background-image:url('/monfluxo-background.svg?v=20261002-force3')!important;
+  background-position:center center!important;
+  background-size:cover!important;
+  background-repeat:no-repeat!important;
 }
-.flow-stage:before,.flow-stage:after,
-.flow-svg,.flow-orb,.flow-particles{
-  content:none!important;
-  display:none!important;
-  visibility:hidden!important;
-  opacity:0!important;
-  animation:none!important;
-  background:none!important;
+.flow-stage:before,.flow-stage:after,.flow-svg,.flow-orb,.flow-particles{
+  content:none!important;display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;background:none!important
 }
 .topbar,.content{position:relative!important;z-index:2!important}
 
-/* Stop hiding the real img already rendered inside BrandMark. */
+/* Keep main surfaces translucent enough for the image to read through. */
+.glass-surface,.loading-panel,.metric-card,.panel,.portfolio-kpi,.executive-strip{
+  background:linear-gradient(145deg,rgba(9,9,8,.64),rgba(4,4,4,.54))!important;
+}
+.hero{background:linear-gradient(145deg,rgba(10,10,9,.67),rgba(4,4,4,.56))!important}
+
+/* Visible DOM logo + CSS fallback on the same element. */
 .brand-mark,.brand-mark-compact{
   position:relative!important;
   display:grid!important;
   place-items:center!important;
-  background:none!important;
+  background:url('/monfluxo-mark.svg?v=20261002-force3') center/contain no-repeat!important;
   overflow:visible!important;
 }
 .brand-mark>img{
@@ -66,8 +72,6 @@ body{min-height:100vh!important}
 .brand-mark>svg{display:none!important}
 
 @media(max-width:650px){
-  .flow-stage{
-    background-position:center top!important;
-    background-size:auto 100vh!important;
-  }
+  html,body{background-position:center top!important;background-size:auto 100vh!important}
+  .flow-stage{background-position:center top!important;background-size:auto 100vh!important}
 }
