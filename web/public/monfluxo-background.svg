@@ -1,64 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#050505"/>
-      <stop offset="0.52" stop-color="#090806"/>
-      <stop offset="1" stop-color="#040404"/>
-    </linearGradient>
-    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#9f6d2f" stop-opacity="0"/>
-      <stop offset="0.18" stop-color="#d59a48" stop-opacity="0.72"/>
-      <stop offset="0.42" stop-color="#ffe1a5" stop-opacity="0.96"/>
-      <stop offset="0.64" stop-color="#c88936" stop-opacity="0.82"/>
-      <stop offset="0.84" stop-color="#f2c774" stop-opacity="0.58"/>
-      <stop offset="1" stop-color="#9f6d2f" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="silver" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#7c8288" stop-opacity="0"/>
-      <stop offset="0.22" stop-color="#d8dde2" stop-opacity="0.58"/>
-      <stop offset="0.48" stop-color="#ffffff" stop-opacity="0.82"/>
-      <stop offset="0.72" stop-color="#aeb4ba" stop-opacity="0.56"/>
-      <stop offset="1" stop-color="#7c8288" stop-opacity="0"/>
-    </linearGradient>
-    <filter id="glowGold" x="-20%" y="-50%" width="140%" height="200%">
-      <feGaussianBlur stdDeviation="9" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="glowSilver" x="-20%" y="-50%" width="140%" height="200%">
-      <feGaussianBlur stdDeviation="7" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <radialGradient id="warm" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#d89b46" stop-opacity="0.13"/>
-      <stop offset="1" stop-color="#d89b46" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="cool" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#d8dde2" stop-opacity="0.08"/>
-      <stop offset="1" stop-color="#d8dde2" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <rect width="1600" height="1000" fill="url(#bg)"/>
-  <ellipse cx="1360" cy="130" rx="420" ry="260" fill="url(#warm)"/>
-  <ellipse cx="210" cy="790" rx="440" ry="300" fill="url(#cool)"/>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#020202"/><stop offset=".48" stop-color="#080705"/><stop offset="1" stop-color="#020202"/></linearGradient>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#7f5524" stop-opacity="0"/><stop offset=".16" stop-color="#d99b42"/><stop offset=".38" stop-color="#ffe7ad"/><stop offset=".58" stop-color="#c8812d"/><stop offset=".82" stop-color="#f5c66e"/><stop offset="1" stop-color="#8e5d27" stop-opacity="0"/></linearGradient>
+  <linearGradient id="silver" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#74797e" stop-opacity="0"/><stop offset=".18" stop-color="#d9dee2"/><stop offset=".45" stop-color="#ffffff"/><stop offset=".70" stop-color="#9ca2a8"/><stop offset="1" stop-color="#686d72" stop-opacity="0"/></linearGradient>
+  <filter id="goldGlow" x="-30%" y="-100%" width="160%" height="300%"><feGaussianBlur stdDeviation="12" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="silverGlow" x="-30%" y="-100%" width="160%" height="300%"><feGaussianBlur stdDeviation="9" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <radialGradient id="warm"><stop stop-color="#d89339" stop-opacity=".24"/><stop offset="1" stop-color="#d89339" stop-opacity="0"/></radialGradient>
+  <radialGradient id="cool"><stop stop-color="#dce1e5" stop-opacity=".14"/><stop offset="1" stop-color="#dce1e5" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="1600" height="1000" fill="url(#bg)"/>
+<ellipse cx="1450" cy="130" rx="500" ry="330" fill="url(#warm)"/>
+<ellipse cx="120" cy="800" rx="520" ry="340" fill="url(#cool)"/>
+<ellipse cx="780" cy="560" rx="640" ry="430" fill="#c58d42" opacity=".035"/>
 
-  <g fill="none" stroke-linecap="round" filter="url(#glowGold)">
-    <path d="M-180 135 C 220 -20, 470 280, 790 170 S 1280 -20, 1770 150" stroke="url(#gold)" stroke-width="3.2" opacity="0.78"/>
-    <path d="M-190 168 C 240 18, 470 310, 805 198 S 1295 8, 1760 183" stroke="url(#gold)" stroke-width="1.8" opacity="0.62"/>
-    <path d="M-180 742 C 220 555, 430 900, 820 750 S 1275 560, 1760 690" stroke="url(#gold)" stroke-width="3.5" opacity="0.74"/>
-    <path d="M-170 780 C 230 592, 450 930, 838 778 S 1290 590, 1760 730" stroke="url(#gold)" stroke-width="1.8" opacity="0.58"/>
-    <path d="M-160 820 C 235 640, 455 965, 850 820 S 1310 630, 1760 770" stroke="url(#gold)" stroke-width="1.2" opacity="0.46"/>
-  </g>
+<!-- broad luminous ribbons inspired by the approved MONFLUXO banner -->
+<g fill="none" stroke-linecap="round" filter="url(#goldGlow)">
+  <path d="M-260 145 C 40 -70 260 10 470 170 C 720 360 920 175 1120 70 C 1325 -38 1515 16 1810 210" stroke="url(#gold)" stroke-width="18" opacity=".72"/>
+  <path d="M-240 188 C 50 -20 285 54 492 207 C 720 374 932 215 1140 112 C 1350 8 1548 68 1810 242" stroke="url(#gold)" stroke-width="5" opacity=".82"/>
+  <path d="M-260 768 C 30 530 250 575 500 742 C 738 902 950 790 1170 650 C 1390 510 1580 535 1815 685" stroke="url(#gold)" stroke-width="22" opacity=".76"/>
+  <path d="M-260 825 C 50 590 278 635 520 790 C 760 944 968 840 1190 704 C 1408 570 1600 592 1815 733" stroke="url(#gold)" stroke-width="6" opacity=".78"/>
+  <path d="M-235 890 C 80 655 300 702 544 842 C 775 975 995 892 1202 760 C 1422 620 1612 650 1818 782" stroke="url(#gold)" stroke-width="3" opacity=".58"/>
+</g>
+<g fill="none" stroke-linecap="round" filter="url(#silverGlow)">
+  <path d="M-250 255 C 62 82 300 135 510 300 C 730 472 950 318 1172 205 C 1388 95 1575 145 1805 302" stroke="url(#silver)" stroke-width="12" opacity=".52"/>
+  <path d="M-260 690 C 42 470 282 510 520 670 C 742 820 956 726 1185 585 C 1402 452 1590 478 1818 620" stroke="url(#silver)" stroke-width="14" opacity=".52"/>
+  <path d="M-255 938 C 55 735 310 760 555 895 C 790 1024 1015 948 1228 820 C 1450 686 1620 718 1820 840" stroke="url(#silver)" stroke-width="5" opacity=".45"/>
+</g>
 
-  <g fill="none" stroke-linecap="round" filter="url(#glowSilver)">
-    <path d="M-160 230 C 180 120, 430 410, 785 275 S 1260 70, 1740 245" stroke="url(#silver)" stroke-width="2.2" opacity="0.52"/>
-    <path d="M-170 684 C 180 535, 440 812, 795 698 S 1275 520, 1745 650" stroke="url(#silver)" stroke-width="2.3" opacity="0.46"/>
-    <path d="M-180 855 C 240 700, 470 995, 855 858 S 1300 680, 1760 815" stroke="url(#silver)" stroke-width="1.7" opacity="0.42"/>
-  </g>
-
-  <g fill="#d8a153" opacity="0.45">
-    <circle cx="126" cy="180" r="1.5"/><circle cx="185" cy="218" r="1"/><circle cx="260" cy="155" r="1.3"/>
-    <circle cx="1320" cy="162" r="1.3"/><circle cx="1406" cy="207" r="1.1"/><circle cx="1505" cy="132" r="1.6"/>
-    <circle cx="116" cy="820" r="1.4"/><circle cx="212" cy="760" r="1.2"/><circle cx="321" cy="867" r="1"/>
-    <circle cx="1260" cy="772" r="1.2"/><circle cx="1398" cy="838" r="1.5"/><circle cx="1510" cy="731" r="1"/>
-  </g>
+<!-- subtle dust -->
+<g fill="#f0c579" opacity=".62">
+ <circle cx="80" cy="110" r="2"/><circle cx="145" cy="238" r="1.4"/><circle cx="235" cy="76" r="1.6"/><circle cx="355" cy="286" r="1.2"/>
+ <circle cx="1240" cy="92" r="1.8"/><circle cx="1344" cy="210" r="1.3"/><circle cx="1456" cy="72" r="2"/><circle cx="1530" cy="278" r="1.2"/>
+ <circle cx="90" cy="702" r="1.6"/><circle cx="190" cy="850" r="2"/><circle cx="310" cy="635" r="1.3"/><circle cx="420" cy="930" r="1.5"/>
+ <circle cx="1180" cy="735" r="1.3"/><circle cx="1325" cy="900" r="2"/><circle cx="1450" cy="680" r="1.5"/><circle cx="1540" cy="865" r="1.7"/>
+</g>
+<g fill="#d9dde1" opacity=".42"><circle cx="520" cy="112" r="1.2"/><circle cx="680" cy="860" r="1.1"/><circle cx="1010" cy="150" r="1.3"/><circle cx="1080" cy="910" r="1.1"/></g>
 </svg>
