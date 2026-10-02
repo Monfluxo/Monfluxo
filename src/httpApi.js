@@ -3,224 +3,29 @@ import { requestWalletDashboardWithIntelligence, requestCreatorRevenue } from ".
 import { getTokenMetadata } from "./helius.js";
 import { getPumpTokenMetadata } from "./pumpMetadata.js";
 import { getJupiterTokenMetadata } from "./jupiterMetadata.js";
+import { getPumpWalletProfile } from "./pumpProfile.js";
 import { buildIncomingFlowIntelligence } from "./incomingFlowService.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const ALLOWED_ORIGINS = new Set(
-  String(process.env.MONFLUXO_WEB_ORIGIN || "http://localhost:3001")
-    .split(",")
-    .map((value) => value.trim().replace(/\/$/, ""))
-    .filter(Boolean)
-);
+const ALLOWED_ORIGINS = new Set(String(process.env.MONFLUXO_WEB_ORIGIN || "http://localhost:3001").split(",").map(v=>v.trim().replace(/\/$/,"")).filter(Boolean));
+function resolveCorsOrigin(req){const origin=String(req?.headers?.origin||"").replace(/\/$/,"");if(!origin)return [...ALLOWED_ORIGINS][0]||"http://localhost:3001";return ALLOWED_ORIGINS.has(origin)?origin:null}
+function corsHeaders(req){const origin=resolveCorsOrigin(req);return {...(origin?{"Access-Control-Allow-Origin":origin}:{}),"Access-Control-Allow-Methods":"GET,OPTIONS","Access-Control-Allow-Headers":"Content-Type","Vary":"Origin"}}
+function securityHeaders(){return {"X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","X-Frame-Options":"DENY"}}
+function sendJson(req,res,statusCode,body){res.writeHead(statusCode,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...securityHeaders(),...corsHeaders(req)});res.end(JSON.stringify(body))}
+function pathValue(pathname,name){const match=pathname.match(new RegExp(`^/api/${name}/([^/]+)$`));return match?decodeURIComponent(match[1]):null}
 
-function resolveCorsOrigin(req) {
-  const origin = String(req?.headers?.origin || "").replace(/\/$/, "");
-  if (!origin) return [...ALLOWED_ORIGINS][0] || "http://localhost:3001";
-  return ALLOWED_ORIGINS.has(origin) ? origin : null;
-}
+function mediaVariants(url){if(typeof url!=="string"||!url.trim())return[];const value=url.trim();const out=[value];const ipfs=value.match(/^(?:ipfs:\/\/|https?:\/\/(?:ipfs\.io|gateway\.pinata\.cloud|cloudflare-ipfs\.com)\/ipfs\/)(.+)$/i);if(ipfs){const cid=ipfs[1].replace(/^ipfs\//i,"");out.push(`https://ipfs.io/ipfs/${cid}`,`https://gateway.pinata.cloud/ipfs/${cid}`,`https://cloudflare-ipfs.com/ipfs/${cid}`)}if(/^ar:\/\//i.test(value))out.push(`https://arweave.net/${value.replace(/^ar:\/\//i,"")}`);return out}
+async function resolveArtworkCandidates(mint){const[pump,jupiter,metadata]=await Promise.all([getPumpTokenMetadata(mint).catch(()=>null),getJupiterTokenMetadata(mint).catch(()=>null),getTokenMetadata(mint).catch(()=>null)]);return [...new Set([pump?.image,metadata?.image,jupiter?.image].flatMap(mediaVariants).filter(Boolean))]}
+async function fetchArtwork(url){const response=await fetch(url,{redirect:"follow",headers:{Accept:"image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8","User-Agent":"Mozilla/5.0 MONFLUXO/1.0"},signal:AbortSignal.timeout(9000)});if(!response.ok)return null;const contentType=response.headers.get("content-type")||"";if(!contentType.startsWith("image/"))return null;return {contentType,bytes:Buffer.from(await response.arrayBuffer())}}
+async function proxyTokenImage(req,mint,res){if(!ADDRESS_RE.test(mint))return sendJson(req,res,400,{error:"invalid_mint",message:"Invalid Solana token mint."});try{const candidates=await resolveArtworkCandidates(mint);for(const image of candidates){try{const result=await fetchArtwork(image);if(!result)continue;res.writeHead(200,{"Content-Type":result.contentType,"Content-Length":result.bytes.length,"Cache-Control":"public, max-age=21600, stale-while-revalidate=172800",...securityHeaders(),...corsHeaders(req)});return res.end(result.bytes)}catch(error){console.warn(`Artwork source failed for ${mint}: ${error?.message||error}`)}}return sendJson(req,res,404,{error:"image_not_found",message:candidates.length?"Resolved artwork sources were unavailable.":"No token artwork was resolved."})}catch(error){console.warn(`Token image proxy failed for ${mint}: ${error.message}`);return sendJson(req,res,502,{error:"image_proxy_failed",message:"Unable to load token artwork."})}}
 
-function corsHeaders(req) {
-  const origin = resolveCorsOrigin(req);
-  return {
-    ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
-    "Access-Control-Allow-Methods": "GET,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Vary": "Origin"
-  };
-}
-
-function securityHeaders() {
-  return {
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
-    "X-Frame-Options": "DENY"
-  };
-}
-
-function sendJson(req, res, statusCode, body) {
-  res.writeHead(statusCode, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-    ...securityHeaders(),
-    ...corsHeaders(req)
-  });
-  res.end(JSON.stringify(body));
-}
-
-function walletFromPath(pathname) {
-  const match = pathname.match(/^\/api\/wallet\/([^/]+)$/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-function creatorRevenueWalletFromPath(pathname) {
-  const match = pathname.match(/^\/api\/creator-revenue\/([^/]+)$/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-function incomingFlowsWalletFromPath(pathname) {
-  const match = pathname.match(/^\/api\/incoming-flows\/([^/]+)$/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-function tokenImageMintFromPath(pathname) {
-  const match = pathname.match(/^\/api\/token-image\/([^/]+)$/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-async function resolveArtworkCandidates(mint) {
-  const [pump, jupiter, metadata] = await Promise.all([
-    getPumpTokenMetadata(mint).catch(() => null),
-    getJupiterTokenMetadata(mint).catch(() => null),
-    getTokenMetadata(mint).catch(() => null)
-  ]);
-  return [...new Set([
-    pump?.image,
-    metadata?.image,
-    jupiter?.image
-  ].filter(Boolean))];
-}
-
-async function fetchArtwork(url) {
-  const response = await fetch(url, {
-    redirect: "follow",
-    headers: {
-      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-      "User-Agent": "Mozilla/5.0 MONFLUXO/1.0"
-    },
-    signal: AbortSignal.timeout(8000)
-  });
-  if (!response.ok) return null;
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.startsWith("image/")) return null;
-  return { contentType, bytes: Buffer.from(await response.arrayBuffer()) };
-}
-
-async function proxyTokenImage(req, mint, res) {
-  if (!ADDRESS_RE.test(mint)) {
-    return sendJson(req, res, 400, { error: "invalid_mint", message: "Invalid Solana token mint." });
-  }
-
-  try {
-    const candidates = await resolveArtworkCandidates(mint);
-    if (!candidates.length) {
-      return sendJson(req, res, 404, { error: "image_not_found", message: "No token artwork was resolved." });
-    }
-
-    for (const image of candidates) {
-      try {
-        const result = await fetchArtwork(image);
-        if (!result) continue;
-        res.writeHead(200, {
-          "Content-Type": result.contentType,
-          "Content-Length": result.bytes.length,
-          "Cache-Control": "public, max-age=21600, stale-while-revalidate=172800",
-          ...securityHeaders(),
-          ...corsHeaders(req)
-        });
-        return res.end(result.bytes);
-      } catch (error) {
-        console.warn(`Artwork source failed for ${mint}: ${error?.message || error}`);
-      }
-    }
-
-    return sendJson(req, res, 404, { error: "image_not_found", message: "Resolved artwork sources were unavailable." });
-  } catch (error) {
-    console.warn(`Token image proxy failed for ${mint}: ${error.message}`);
-    return sendJson(req, res, 502, { error: "image_proxy_failed", message: "Unable to load token artwork." });
-  }
-}
-
-export async function handleRequest(req, res) {
-  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, { ...securityHeaders(), ...corsHeaders(req) });
-    return res.end();
-  }
-
-  if (req.method === "GET" && url.pathname === "/health") {
-    return sendJson(req, res, 200, { ok: true, service: "monfluxo-api" });
-  }
-
-  const imageMint = tokenImageMintFromPath(url.pathname);
-  if (req.method === "GET" && imageMint) return proxyTokenImage(req, imageMint, res);
-
-  const incomingWallet = incomingFlowsWalletFromPath(url.pathname);
-  if (req.method === "GET" && incomingWallet) {
-    if (!ADDRESS_RE.test(incomingWallet)) {
-      return sendJson(req, res, 400, { error: "invalid_wallet", message: "Invalid Solana wallet address." });
-    }
-    try {
-      return sendJson(req, res, 200, await buildIncomingFlowIntelligence(incomingWallet));
-    } catch (error) {
-      console.error("Incoming flows request failed:", error);
-      return sendJson(req, res, 500, { error: "incoming_flows_failed", message: "Unable to load incoming flows right now." });
-    }
-  }
-
-  const creatorRevenueWallet = creatorRevenueWalletFromPath(url.pathname);
-  if (req.method === "GET" && creatorRevenueWallet) {
-    if (!ADDRESS_RE.test(creatorRevenueWallet)) {
-      return sendJson(req, res, 400, { error: "invalid_wallet", message: "Invalid Solana wallet address." });
-    }
-    try {
-      const payload = await requestCreatorRevenue(creatorRevenueWallet);
-      return sendJson(req, res, 200, payload);
-    } catch (error) {
-      console.error("Creator revenue request failed:", error);
-      return sendJson(req, res, 500, { error: "creator_revenue_failed", message: "Unable to load creator revenue right now." });
-    }
-  }
-
-  const wallet = walletFromPath(url.pathname);
-  if (req.method === "GET" && wallet) {
-    if (!ADDRESS_RE.test(wallet)) {
-      return sendJson(req, res, 400, {
-        error: "invalid_wallet",
-        message: "Invalid Solana wallet address."
-      });
-    }
-
-    try {
-      const priority = Number(url.searchParams.get("priority") || 1000);
-      const payload = await requestWalletDashboardWithIntelligence(wallet, { priority });
-      return sendJson(req, res, 200, payload);
-    } catch (error) {
-      console.error("Wallet API request failed:", error);
-      return sendJson(req, res, 500, {
-        error: "wallet_intelligence_failed",
-        message: "Unable to build wallet intelligence right now."
-      });
-    }
-  }
-
-  return sendJson(req, res, 404, {
-    error: "not_found",
-    message: "Route not found."
-  });
-}
-
-export function createServer() {
-  return http.createServer((req, res) => {
-    Promise.resolve(handleRequest(req, res)).catch((error) => {
-      console.error("Unhandled API error:", error);
-      if (!res.headersSent) {
-        sendJson(req, res, 500, {
-          error: "internal_error",
-          message: "Internal server error."
-        });
-      } else {
-        res.end();
-      }
-    });
-  });
-}
-
-if (process.argv[1]?.endsWith("httpApi.js")) {
-  const server = createServer();
-  server.listen(PORT, () => {
-    console.log(`MONFLUXO API listening on port ${PORT}`);
-    console.log(`CORS origins: ${[...ALLOWED_ORIGINS].join(", ")}`);
-  });
-}
+export async function handleRequest(req,res){const url=new URL(req.url||"/",`http://${req.headers.host||"localhost"}`);if(req.method==="OPTIONS"){res.writeHead(204,{...securityHeaders(),...corsHeaders(req)});return res.end()}if(req.method==="GET"&&url.pathname==="/health")return sendJson(req,res,200,{ok:true,service:"monfluxo-api"});
+ const imageMint=pathValue(url.pathname,"token-image");if(req.method==="GET"&&imageMint)return proxyTokenImage(req,imageMint,res);
+ const profileWallet=pathValue(url.pathname,"pump-profile");if(req.method==="GET"&&profileWallet){if(!ADDRESS_RE.test(profileWallet))return sendJson(req,res,400,{error:"invalid_wallet",message:"Invalid Solana wallet address."});const profile=await getPumpWalletProfile(profileWallet).catch(()=>null);return sendJson(req,res,200,{found:Boolean(profile),profile})}
+ const incomingWallet=pathValue(url.pathname,"incoming-flows");if(req.method==="GET"&&incomingWallet){if(!ADDRESS_RE.test(incomingWallet))return sendJson(req,res,400,{error:"invalid_wallet",message:"Invalid Solana wallet address."});try{return sendJson(req,res,200,await buildIncomingFlowIntelligence(incomingWallet))}catch(error){console.error("Incoming flows request failed:",error);return sendJson(req,res,500,{error:"incoming_flows_failed",message:"Unable to load incoming flows right now."})}}
+ const creatorWallet=pathValue(url.pathname,"creator-revenue");if(req.method==="GET"&&creatorWallet){if(!ADDRESS_RE.test(creatorWallet))return sendJson(req,res,400,{error:"invalid_wallet",message:"Invalid Solana wallet address."});try{return sendJson(req,res,200,await requestCreatorRevenue(creatorWallet))}catch(error){console.error("Creator revenue request failed:",error);return sendJson(req,res,500,{error:"creator_revenue_failed",message:"Unable to load creator revenue right now."})}}
+ const wallet=pathValue(url.pathname,"wallet");if(req.method==="GET"&&wallet){if(!ADDRESS_RE.test(wallet))return sendJson(req,res,400,{error:"invalid_wallet",message:"Invalid Solana wallet address."});try{const priority=Number(url.searchParams.get("priority")||1000);const payload=await requestWalletDashboardWithIntelligence(wallet,{priority});return sendJson(req,res,200,payload)}catch(error){console.error("Wallet API request failed:",error);return sendJson(req,res,500,{error:"wallet_intelligence_failed",message:"Unable to build wallet intelligence right now."})}}
+ return sendJson(req,res,404,{error:"not_found",message:"Route not found."})}
+export function createServer(){return http.createServer((req,res)=>{Promise.resolve(handleRequest(req,res)).catch(error=>{console.error("Unhandled API error:",error);if(!res.headersSent)sendJson(req,res,500,{error:"internal_error",message:"Internal server error."});else res.end()})})}
+if(process.argv[1]?.endsWith("httpApi.js")){const server=createServer();server.listen(PORT,()=>{console.log(`MONFLUXO API listening on port ${PORT}`);console.log(`CORS origins: ${[...ALLOWED_ORIGINS].join(", ")}`)})}
