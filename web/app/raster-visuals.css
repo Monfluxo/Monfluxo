@@ -1,39 +1,42 @@
-/* MONFLUXO raster-only visual layer. No SVG assets or SVG data URLs are used. */
+/* MONFLUXO raster visual layer. Real DOM elements only: no pseudo-element backgrounds. */
 html,body{
   min-height:100%;
   margin:0!important;
-  background-color:#020202!important;
-  background-image:url('/monfluxo-background.webp?v=20261002-raster3')!important;
-  background-position:center top!important;
-  background-size:cover!important;
-  background-repeat:repeat-y!important;
-  background-attachment:fixed!important;
+  background:#020202!important;
 }
 body{min-height:100vh!important}
 .app-shell{
   position:relative!important;
   min-height:100vh!important;
-  isolation:auto!important;
+  isolation:isolate!important;
   background:transparent!important;
 }
-.app-shell::before,.app-shell::after{
-  content:none!important;
-  display:none!important;
-}
-.content{
-  position:relative!important;
-  z-index:1!important;
-  background:transparent!important;
-}
-.topbar{position:relative!important;z-index:2!important}
+.app-shell::before,.app-shell::after{content:none!important;display:none!important}
 
-.flow-stage,.flow-svg,.flow-orb,.flow-particles{display:none!important;visibility:hidden!important;opacity:0!important}
+/* Existing FlowBackground DOM becomes the fixed raster background itself. */
+.flow-stage{
+  display:block!important;
+  visibility:visible!important;
+  opacity:1!important;
+  position:fixed!important;
+  inset:0!important;
+  width:100vw!important;
+  height:100vh!important;
+  z-index:0!important;
+  pointer-events:none!important;
+  background:#020202 url('/monfluxo-background.webp?v=20261002-dom1') center center/cover no-repeat!important;
+}
+.flow-stage>.flow-svg,.flow-stage>.flow-orb,.flow-stage>.flow-particles{display:none!important;visibility:hidden!important;opacity:0!important}
 
+.topbar,.content{position:relative!important;z-index:2!important}
+.content{background:transparent!important}
+
+/* Brand uses the uploaded premium raster asset. */
 .brand-mark,.brand-mark-compact{
   position:relative!important;
   display:block!important;
   background-color:transparent!important;
-  background-image:url('/monfluxo-logo-premium.webp?v=20261002-logo-premium1')!important;
+  background-image:url('/monfluxo-logo-premium.webp?v=20261002-dom1')!important;
   background-position:center!important;
   background-size:contain!important;
   background-repeat:no-repeat!important;
@@ -43,22 +46,21 @@ body{min-height:100vh!important}
   flex:0 0 auto!important;
 }
 .brand-mark>img,.brand-mark>svg{display:none!important;visibility:hidden!important;opacity:0!important}
-.brand-mark-compact{width:64px!important;height:64px!important}
-.hero-brand-watermark .brand-mark{width:104px!important;height:104px!important;opacity:1!important}
-.topbar{min-height:86px!important}
+.brand-mark-compact{width:72px!important;height:72px!important}
+.hero-brand-watermark .brand-mark{width:120px!important;height:120px!important;opacity:1!important}
+.topbar{min-height:94px!important}
 
 .glass-surface,.loading-panel,.metric-card,.panel,.portfolio-kpi,.executive-strip{
-  background:linear-gradient(145deg,rgba(8,8,7,.68),rgba(3,3,3,.58))!important;
+  background:linear-gradient(145deg,rgba(8,8,7,.62),rgba(3,3,3,.52))!important;
 }
-.hero{background:linear-gradient(145deg,rgba(9,9,8,.70),rgba(3,3,3,.60))!important}
+.hero{background:linear-gradient(145deg,rgba(9,9,8,.64),rgba(3,3,3,.54))!important}
 
 @media(max-width:650px){
-  html,body{
+  .flow-stage{
     background-position:center top!important;
-    background-size:100vw auto!important;
+    background-size:auto 100vh!important;
     background-repeat:repeat-y!important;
-    background-attachment:scroll!important;
   }
-  .brand-mark-compact{width:58px!important;height:58px!important}
-  .topbar{min-height:80px!important}
+  .brand-mark-compact{width:66px!important;height:66px!important}
+  .topbar{min-height:88px!important}
 }
