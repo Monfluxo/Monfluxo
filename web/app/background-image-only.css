@@ -1,70 +1,84 @@
-/* MONFLUXO final visual layer — keep this imported last. */
+/* MONFLUXO final visual layer — imported last. Dedicated pseudo-elements make the logo/background independent of legacy DOM layers. */
 html,body{
   min-height:100%;
   margin:0!important;
-  background-color:#020202!important;
-  background-image:url('/monfluxo-background.svg?v=20261002-force4')!important;
-  background-position:center center!important;
-  background-size:cover!important;
-  background-repeat:no-repeat!important;
-  background-attachment:fixed!important;
+  background:#020202!important;
 }
 body{min-height:100vh!important}
+
 .app-shell{
   position:relative!important;
   min-height:100vh!important;
   isolation:isolate!important;
   background:transparent!important;
 }
-.app-shell:before,.app-shell:after{content:none!important;display:none!important}
 
-.flow-stage{
+/* One guaranteed fixed background layer behind the complete application. */
+.app-shell:before{
+  content:""!important;
+  display:block!important;
+  visibility:visible!important;
+  opacity:1!important;
   position:fixed!important;
   inset:0!important;
   width:100vw!important;
   height:100vh!important;
   z-index:0!important;
-  display:block!important;
-  visibility:visible!important;
-  opacity:1!important;
   pointer-events:none!important;
-  overflow:hidden!important;
-  animation:none!important;
-  transform:none!important;
-  filter:none!important;
   background-color:#020202!important;
-  background-image:url('/monfluxo-background.svg?v=20261002-force4')!important;
+  background-image:url('/monfluxo-background.svg?v=20261002-force5')!important;
   background-position:center center!important;
   background-size:cover!important;
   background-repeat:no-repeat!important;
+  filter:none!important;
+  transform:none!important;
+  animation:none!important;
 }
-.flow-stage:before,.flow-stage:after,.flow-svg,.flow-orb,.flow-particles{
-  content:none!important;display:none!important;visibility:hidden!important;opacity:0!important;animation:none!important;background:none!important
+.app-shell:after{content:none!important;display:none!important}
+
+/* Disable every older decorative background implementation. */
+.flow-stage,.flow-stage:before,.flow-stage:after,.flow-svg,.flow-orb,.flow-particles{
+  content:none!important;
+  display:none!important;
+  visibility:hidden!important;
+  opacity:0!important;
+  background:none!important;
+  animation:none!important;
 }
 .topbar,.content{position:relative!important;z-index:2!important}
 
-/* Let the gold/silver ribbons remain visible through the dashboard. */
+/* Keep the background readable through the dashboard surfaces. */
 .glass-surface,.loading-panel,.metric-card,.panel,.portfolio-kpi,.executive-strip{
   background:linear-gradient(145deg,rgba(8,8,7,.58),rgba(3,3,3,.48))!important;
 }
 .hero{background:linear-gradient(145deg,rgba(9,9,8,.62),rgba(3,3,3,.50))!important}
 
-/* Restore the raster logo asset that was previously proven visible. */
+/* One guaranteed logo layer. It does not depend on the nested img or previous background rules. */
 .brand-mark,.brand-mark-compact{
   position:relative!important;
   display:block!important;
-  background-color:transparent!important;
-  background-image:url('/monfluxo-logo.webp?v=20261002-force4')!important;
-  background-position:center!important;
-  background-size:contain!important;
-  background-repeat:no-repeat!important;
+  background:none!important;
   overflow:visible!important;
   opacity:1!important;
   visibility:visible!important;
 }
+.brand-mark:before,.brand-mark-compact:before{
+  content:""!important;
+  display:block!important;
+  visibility:visible!important;
+  opacity:1!important;
+  position:absolute!important;
+  inset:0!important;
+  z-index:5!important;
+  pointer-events:none!important;
+  background-color:transparent!important;
+  background-image:url('/monfluxo-logo-real.svg?v=20261002-force5')!important;
+  background-position:center!important;
+  background-size:contain!important;
+  background-repeat:no-repeat!important;
+}
 .brand-mark>img,.brand-mark>svg{display:none!important;visibility:hidden!important;opacity:0!important}
 
 @media(max-width:650px){
-  html,body{background-position:center top!important;background-size:auto 100vh!important}
-  .flow-stage{background-position:center top!important;background-size:auto 100vh!important}
+  .app-shell:before{background-position:center top!important;background-size:auto 100vh!important}
 }
