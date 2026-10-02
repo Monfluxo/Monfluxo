@@ -3,13 +3,9 @@ import Link from "next/link";
 export default function LandingPage() {
   return (
     <main className="landing-shell">
-      <div className="landing-glow landing-glow-one" />
-      <div className="landing-glow landing-glow-two" />
-
       <nav className="landing-nav">
         <Link href="/" className="landing-brand" aria-label="MONFLUXO home">
-          <img src="/monfluxo-mark.svg" alt="" />
-          <span>MONFLUXO</span>
+          <img src="/monfluxo-logo.webp" alt="MONFLUXO" />
         </Link>
         <Link href="/beta" className="landing-nav-cta">Enter Beta</Link>
       </nav>
@@ -50,7 +46,7 @@ export default function LandingPage() {
       </section>
 
       <section className="landing-final">
-        <img src="/monfluxo-mark.svg" alt="" />
+        <img src="/monfluxo-logo.webp" alt="MONFLUXO" />
         <h2>MONFLUXO is being built in public.</h2>
         <p>The engine is running. The first layer is ready to explore.</p>
         <Link href="/beta" className="landing-primary">Enter Private Beta <span>→</span></Link>
