@@ -9,7 +9,8 @@ body{
   position:relative!important;
 }
 
-/* Definitive fixed background. Keep it above the page's black base but below all UI. */
+/* Fixed raster background. A dedicated positive z-index prevents the opaque
+   Next/root canvas from painting over the image. */
 body::before{
   content:""!important;
   display:block!important;
@@ -17,8 +18,11 @@ body::before{
   inset:0!important;
   width:100vw!important;
   height:100vh!important;
-  background:url("/monfluxo-background.webp") center center / cover no-repeat!important;
-  z-index:0!important;
+  background-image:url("/monfluxo-background.webp")!important;
+  background-position:center center!important;
+  background-size:cover!important;
+  background-repeat:no-repeat!important;
+  z-index:1!important;
   opacity:1!important;
   visibility:visible!important;
   pointer-events:none!important;
@@ -26,7 +30,7 @@ body::before{
 
 .app-shell{
   position:relative!important;
-  z-index:1!important;
+  z-index:2!important;
   min-height:100vh!important;
   isolation:auto!important;
   background:transparent!important;
@@ -40,7 +44,7 @@ body::before{
   opacity:0!important;
 }
 
-.topbar,.content{position:relative!important;z-index:2!important}
+.topbar,.content{position:relative!important;z-index:3!important}
 .content{background:transparent!important}
 
 /* Definitive WebP logo. */
