@@ -1,13 +1,10 @@
-/* MONFLUXO background render diagnostic.
-   TEMPORARY: deliberately loud CSS-only background to prove whether the
-   fixed background layer is actually visible in production. */
+/* Production raster visuals: real Monfluxo background + original logo. */
 html,body{
   min-height:100%;
   margin:0!important;
   background:#020202!important;
 }
 body{min-height:100vh!important;}
-body::before,body::after{content:none!important;display:none!important}
 
 .monfluxo-raster-background{
   position:fixed!important;
@@ -17,8 +14,10 @@ body::before,body::after{content:none!important;display:none!important}
   max-width:none!important;
   max-height:none!important;
   display:block!important;
-  opacity:0!important;
-  visibility:hidden!important;
+  object-fit:cover!important;
+  object-position:center center!important;
+  opacity:1!important;
+  visibility:visible!important;
   pointer-events:none!important;
   z-index:0!important;
 }
@@ -32,18 +31,16 @@ body::before,body::after{content:none!important;display:none!important}
   position:relative!important;
   min-height:100vh!important;
   isolation:auto!important;
-  background:repeating-linear-gradient(135deg,#ff00d4 0 80px,#00eaff 80px 160px,#fff200 160px 240px,#ff3b00 240px 320px)!important;
-  background-color:#ff00d4!important;
+  background:transparent!important;
+  background-image:none!important;
   animation:none!important;
 }
 .app-shell::before,.app-shell::after{content:none!important;display:none!important}
-
 .monfluxo-bg-image,.flow-stage,.flow-svg,.flow-orb,.flow-particles{
   display:none!important;
   visibility:hidden!important;
   opacity:0!important;
 }
-
 .topbar,.content{position:relative!important;z-index:2!important}
 .content{background:transparent!important}
 
@@ -69,11 +66,12 @@ body::before,body::after{content:none!important;display:none!important}
 .topbar{min-height:94px!important}
 
 .glass-surface,.loading-panel,.metric-card,.panel,.portfolio-kpi,.executive-strip{
-  background:rgba(5,5,5,.72)!important;
+  background:rgba(5,5,5,.58)!important;
 }
-.hero{background:rgba(5,5,5,.68)!important}
+.hero{background:rgba(5,5,5,.48)!important}
 
 @media(max-width:650px){
+  .monfluxo-raster-background{object-position:center center!important}
   .brand-mark-compact{width:66px!important;height:66px!important}
   .topbar{min-height:88px!important}
 }
