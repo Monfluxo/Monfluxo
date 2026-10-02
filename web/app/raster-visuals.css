@@ -4,36 +4,21 @@ html,body{
   margin:0!important;
   background:#020202!important;
 }
-body{
-  min-height:100vh!important;
-  position:relative!important;
-}
+body{min-height:100vh!important;}
 
-/* Fixed raster background. A dedicated positive z-index prevents the opaque
-   Next/root canvas from painting over the image. */
-body::before{
-  content:""!important;
-  display:block!important;
-  position:fixed!important;
-  inset:0!important;
-  width:100vw!important;
-  height:100vh!important;
-  background-image:url("/monfluxo-background.webp")!important;
-  background-position:center center!important;
-  background-size:cover!important;
-  background-repeat:no-repeat!important;
-  z-index:1!important;
-  opacity:1!important;
-  visibility:visible!important;
-  pointer-events:none!important;
-}
-
+/* Render the definitive background on the actual application surface.
+   This avoids pseudo-element/root stacking conflicts entirely. */
+body::before,body::after{content:none!important;display:none!important}
 .app-shell{
   position:relative!important;
-  z-index:2!important;
   min-height:100vh!important;
-  isolation:auto!important;
-  background:transparent!important;
+  isolation:isolate!important;
+  background-color:#020202!important;
+  background-image:url("/monfluxo-background.webp")!important;
+  background-repeat:no-repeat!important;
+  background-position:center center!important;
+  background-size:cover!important;
+  background-attachment:fixed!important;
 }
 .app-shell::before,.app-shell::after{content:none!important;display:none!important}
 
@@ -44,7 +29,7 @@ body::before{
   opacity:0!important;
 }
 
-.topbar,.content{position:relative!important;z-index:3!important}
+.topbar,.content{position:relative!important;z-index:2!important}
 .content{background:transparent!important}
 
 /* Definitive WebP logo. */
@@ -75,7 +60,11 @@ body::before{
 .hero{background:linear-gradient(145deg,rgba(9,9,8,.64),rgba(3,3,3,.54))!important}
 
 @media(max-width:650px){
-  body::before{background-position:center top!important;background-size:cover!important}
+  .app-shell{
+    background-position:center top!important;
+    background-size:cover!important;
+    background-attachment:scroll!important;
+  }
   .brand-mark-compact{width:66px!important;height:66px!important}
   .topbar{min-height:88px!important}
 }
