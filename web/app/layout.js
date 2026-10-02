@@ -6,10 +6,11 @@ import "./incoming-flows.css";
 import "./portfolio-summary.css";
 import "./production-ui-fix.css";
 import "./raster-visuals.css";
+import "./landing.css";
 
 export const metadata = {
-  title: "MONFLUXO Wallet Intelligence",
-  description: "Cross-chain wallet intelligence"
+  title: "MONFLUXO — On-chain Intelligence for Solana",
+  description: "Turn raw Solana wallet history into readable on-chain intelligence, positions, PnL, creator revenue and behavioral signals."
 };
 
 export default function RootLayout({ children }) {
