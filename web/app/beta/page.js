@@ -1,1 +1,3 @@
-export { default } from "../page";
+"use client";
+
+export { default } from "../WalletIntelligence";
