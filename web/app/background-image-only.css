@@ -1,0 +1,29 @@
+/* MONFLUXO background: one direct image only. No generated flow layers, pseudo-elements, particles or animation. */
+html,body{
+  min-height:100%;
+  background:#030303 url('/monfluxo-background.svg?v=20261002-direct') center top / cover fixed no-repeat!important;
+}
+body{min-height:100vh!important}
+.app-shell{
+  min-height:100vh!important;
+  background:transparent!important;
+}
+.app-shell:before,.app-shell:after,
+.flow-stage,.flow-stage:before,.flow-stage:after,
+.flow-svg,.flow-orb,.flow-particles{
+  content:none!important;
+  display:none!important;
+  visibility:hidden!important;
+  opacity:0!important;
+  animation:none!important;
+  background:none!important;
+}
+.topbar,.content{position:relative!important;z-index:1!important}
+
+@media(max-width:650px){
+  html,body{
+    background-position:center top!important;
+    background-size:auto 100vh!important;
+    background-attachment:fixed!important;
+  }
+}
