@@ -15,7 +15,15 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <img
+          className="monfluxo-raster-background"
+          src="/monfluxo-background.webp"
+          alt=""
+          aria-hidden="true"
+        />
+        <div className="monfluxo-app-layer">{children}</div>
+      </body>
     </html>
   );
 }
