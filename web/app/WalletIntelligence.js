@@ -1,1 +1,48 @@
-export { default } from "./page";
+"use client";
+
+import { useMemo, useState } from "react";
+import "./funding.css";
+import "./analysis-ui.css";
+import "./intelligence-panel.css";
+import CreatorRevenuePanel from "./CreatorRevenuePanel";
+import IncomingFlowsPanel from "./IncomingFlowsPanel";
+import PortfolioSummary from "./PortfolioSummary";
+
+const fmt=(v,d=2)=>Number.isFinite(Number(v))?new Intl.NumberFormat("en-US",{maximumFractionDigits:d}).format(Number(v)):"—";
+const sol=(v,d=3)=>Number.isFinite(Number(v))?`${fmt(v,Math.abs(Number(v))>0&&Math.abs(Number(v))<.01?6:d)} SOL`:"—";
+const pct=v=>Number.isFinite(Number(v))?`${Number(v)>=0?"+":""}${fmt(v)}%`:"—";
+const short=(v,l=8,r=6)=>!v?"—":v.length<=l+r+3?v:`${v.slice(0,l)}…${v.slice(-r)}`;
+
+function Pill({tone="neutral",children}){return <span className={`pill pill-${tone}`}>{children}</span>}
+function Metric({label,value,hint,tone="default"}){return <div className={`metric-card metric-${tone}`}><div className="metric-label">{label}</div><div className="metric-value">{value}</div>{hint?<div className="metric-hint">{hint}</div>:null}</div>}
+function Section({title,subtitle,children,action}){return <section className="panel"><div className="panel-header"><div><h2>{title}</h2>{subtitle?<p>{subtitle}</p>:null}</div>{action}</div>{children}</section>}
+function Brand(){return <div className="brand-mark brand-mark-compact" aria-label="Monfluxo"><img src="/monfluxo-mark.svg" alt=""/></div>}
+function Token({item}){const name=item?.tokenName||item?.tokenSymbol||short(item?.tokenMint);return <div className="token-cell"><div className="token-avatar">{String(item?.tokenSymbol||name||"?").slice(0,2).toUpperCase()}</div><div className="token-copy"><div className="token-primary">{name}</div><div className="token-mint mono">{short(item?.tokenMint)}</div></div></div>}
+function Trades({rows=[]}){if(!rows.length)return <div className="empty">No ranked closed tokens yet.</div>;return <div className="table-wrap compact-table"><table><thead><tr><th>Token</th><th>Cost</th><th>Proceeds</th><th>Net PnL</th><th>ROI</th></tr></thead><tbody>{rows.map(x=><tr key={x.tokenMint}><td><Token item={x}/></td><td>{sol(x.costSol)}</td><td>{sol(x.proceedsSol)}</td><td className={Number(x.pnlSol)>=0?"positive":"negative"}>{sol(x.pnlSol)}</td><td className={Number(x.roiPct)>=0?"positive":"negative"}>{pct(x.roiPct)}</td></tr>)}</tbody></table></div>}
+function Positions({rows=[]}){if(!rows.length)return <div className="empty">No material open positions detected.</div>;return <div className="table-wrap"><table><thead><tr><th>Token</th><th>Status</th><th>Value</th><th>Remaining cost</th><th>Unrealized PnL</th></tr></thead><tbody>{rows.map(x=>{const value=x.currentPositionValueSol??x.positionValueSol;const pnl=x.unrealizedPnlSolCurrent??x.unrealizedPnlSol;return <tr key={x.tokenMint}><td><Token item={x}/></td><td><Pill tone="warning">{x.state||"open"}</Pill></td><td>{sol(value,6)}</td><td>{sol(x.remainingCostSol,6)}</td><td className={Number(pnl)>=0?"positive":"negative"}>{sol(pnl)}</td></tr>})}</tbody></table></div>}
+
+export default function WalletIntelligence(){
+ const [query,setQuery]=useState("");const [wallet,setWallet]=useState("");const [data,setData]=useState(null);const [loading,setLoading]=useState(false);const [error,setError]=useState("");
+ async function load(address){const a=String(address||"").trim();if(!a)return;setLoading(true);setError("");try{const r=await fetch(`/api/wallet/${encodeURIComponent(a)}`,{cache:"no-store"});const p=await r.json();if(!r.ok)throw new Error(p?.message||"Unable to load wallet intelligence.");setData(p);setWallet(a);setQuery(a)}catch(e){setError(e.message||"Unable to load wallet intelligence.")}finally{setLoading(false)}}
+ async function paste(){try{const t=(await navigator.clipboard.readText()).trim();if(t)setQuery(t)}catch{setError("Clipboard access was blocked. Paste the wallet manually.")}}
+ const tone=useMemo(()=>data?.confidence?.level==="high"?"success":data?.confidence?.level==="review"?"danger":"warning",[data]);
+ const o=data?.overview||{},p=data?.performance||{},c=data?.coverage||{},positions=data?.positions||{},intel=data?.intelligence||{},risk=intel?.risk||{};
+ return <main className="app-shell">
+  <header className="topbar glass-surface"><div className="brand-row"><Brand/><div><div className="brand-name">MONFLUXO</div><div className="brand-subtitle">Wallet Intelligence · Beta</div></div></div><div className="topbar-right"><a href="/" className="landing-nav-cta">Home</a><Pill>Solana</Pill></div></header>
+  <div className="content">
+   <section className="hero glass-surface hero-surface"><div className="eyebrow">ON-CHAIN INTELLIGENCE</div><h1>Understand the wallet.<br/><span>Follow the flow.</span></h1><p>Deterministic Solana wallet reconstruction with PnL, positions, funding provenance, creator revenue and behavioral intelligence.</p><form className="search" onSubmit={e=>{e.preventDefault();load(query)}}><div className="search-field"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Paste a Solana wallet address"/><button type="button" className="paste-wallet" onClick={paste}>Paste</button></div><button disabled={loading||!query.trim()}>{loading?"Analyzing…":"Analyze wallet"}</button></form>{loading?<div className="analysis-progress"><div className="analysis-progress-head"><div className="analysis-progress-label">Building wallet intelligence</div><div className="analysis-progress-percent">Live</div></div><div className="analysis-progress-track"><div className="analysis-progress-bar" style={{width:"72%"}}/></div><div className="analysis-progress-detail">Loading indexed history, positions, PnL and behavioral signals…</div></div>:null}{error?<div className="error-box">{error}</div>:null}</section>
+   {data?<>
+    <div className="wallet-strip glass-surface"><div><div className="strip-label">Wallet</div><div className="wallet-address mono">{wallet}</div></div><div className="strip-pills"><Pill tone={data.metricsStatus==="final"?"success":"warning"}>{data.metricsStatus||"provisional"} metrics</Pill><Pill tone={tone}>{data.confidence?.label||"building"}</Pill></div></div>
+    <PortfolioSummary portfolio={data.portfolio||{}}/>
+    <div className="metric-grid"><Metric label="Known-cost PnL" value={sol(p.totalPnlSol)} tone={Number(p.totalPnlSol)>=0?"positive":"negative"}/><Metric label="Total volume" value={sol(o.totalVolumeSol)} hint={`${fmt(o.tradesAnalyzed,0)} analyzed trades`}/><Metric label="Win rate" value={o.winRatePct==null?"—":`${fmt(o.winRatePct)}%`} hint={`${fmt(o.closedPositions,0)} closed positions`}/><Metric label="Fees" value={sol(o.feesSol,4)} hint="Observed trading fees"/></div>
+    <Section title="MONFLUXO Intelligence" subtitle="Behavioral readout from reconstructed wallet history." action={<Pill tone={intel.confidence==="high"?"success":"warning"}>{intel.confidence||"pending"} confidence</Pill>}><div className="intel-headline"><div><div className="strip-label">Trader profile</div><div className="intel-type">{intel.traderType||"Building behavioral profile…"}</div></div><div className="intel-score"><strong>{intel.consistencyScore==null?"—":fmt(intel.consistencyScore,0)}</strong><span>/100 consistency</span></div></div>{intel.verdict?<div className="intel-verdict">{intel.verdict}</div>:null}<div className="risk-grid"><div className="risk-card"><span>Profit factor</span><strong>{risk.profitFactor==null?"—":`${fmt(risk.profitFactor,2)}×`}</strong></div><div className="risk-card"><span>Observed risk</span><strong>{intel.observedRisk||"—"}</strong></div><div className="risk-card"><span>Max losing streak</span><strong>{fmt(risk.maxLossStreak,0)}</strong></div><div className="risk-card"><span>Gross profit</span><strong className="positive">{sol(risk.grossProfitSol)}</strong></div></div></Section>
+    <div className="trade-grid"><Section title="Top 6 tokens" subtitle="Best closed-token lifetime results."><Trades rows={data.trades?.best||[]}/></Section><Section title="Bottom 6 tokens" subtitle="Worst closed-token lifetime results."><Trades rows={data.trades?.worst||[]}/></Section></div>
+    <Section title="Open positions · up to 6" subtitle={c.historyComplete?"Material purchased-token inventory.":"Provisional while historical indexing is running."}><Positions rows={positions.top||[]}/></Section>
+    <IncomingFlowsPanel incoming={data.incoming||{}} onAnalyze={load}/>
+    <CreatorRevenuePanel revenue={data.creatorRevenue}/>
+    <div className="two-col"><Section title="Historical coverage" subtitle="Indexer state and data completeness."><div className="detail-grid"><div><span>History</span><strong>{c.historyComplete?"Complete":"Indexing"}</strong></div><div><span>Pages scanned</span><strong>{fmt(c.pagesScanned,0)}</strong></div><div><span>Unique tokens</span><strong>{fmt(o.uniqueTokens,0)}</strong></div><div><span>Schema</span><strong>{data.schemaVersion||"—"}</strong></div></div></Section><Section title="Accounting confidence" subtitle="Reconstruction quality, not investment quality."><div className="confidence-block"><Pill tone={tone}>{data.confidence?.label||"pending"}</Pill><p>{data.confidence?.reason||"Coverage is still being evaluated."}</p></div></Section></div>
+    <footer><div>MONFLUXO · Don&apos;t just look at the blockchain. Understand it.</div><div className="mono">beta</div></footer>
+   </>:<div className="loading-panel">{loading?"Building wallet intelligence…":"Paste a wallet to begin."}</div>}
+  </div>
+ </main>
+}
