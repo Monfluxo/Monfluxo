@@ -7,23 +7,26 @@ html,body{
 body{min-height:100vh!important;}
 body::before,body::after{content:none!important;display:none!important}
 
-/* Real DOM image: independent from application background/stacking rules. */
+/* The background is a real DOM image. Keep it above every root/background
+   canvas; the entire application is then placed one layer above it. */
 .monfluxo-raster-background{
   position:fixed!important;
   inset:0!important;
   width:100vw!important;
   height:100vh!important;
+  max-width:none!important;
+  max-height:none!important;
   object-fit:cover!important;
   object-position:center center!important;
   display:block!important;
   opacity:1!important;
   visibility:visible!important;
   pointer-events:none!important;
-  z-index:0!important;
+  z-index:2147483646!important;
 }
 .monfluxo-app-layer{
   position:relative!important;
-  z-index:1!important;
+  z-index:2147483647!important;
   min-height:100vh!important;
   background:transparent!important;
 }
@@ -31,7 +34,8 @@ body::before,body::after{content:none!important;display:none!important}
   position:relative!important;
   min-height:100vh!important;
   isolation:auto!important;
-  background:transparent!important;
+  background-color:transparent!important;
+  background-image:none!important;
 }
 .app-shell::before,.app-shell::after{content:none!important;display:none!important}
 
