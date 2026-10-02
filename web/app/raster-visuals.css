@@ -1,0 +1,64 @@
+/* MONFLUXO raster-only visual layer. No SVG assets, no data:image/svg. */
+html,body{
+  min-height:100%;
+  margin:0!important;
+  background:#020202!important;
+}
+body{min-height:100vh!important}
+.app-shell{
+  position:relative!important;
+  min-height:100vh!important;
+  isolation:isolate!important;
+  background:transparent!important;
+}
+.app-shell::before{
+  content:""!important;
+  position:fixed!important;
+  inset:0!important;
+  z-index:0!important;
+  pointer-events:none!important;
+  background-color:#020202!important;
+  background-image:url('/monfluxo-background.webp?v=20261002-raster1')!important;
+  background-position:center top!important;
+  background-size:cover!important;
+  background-repeat:no-repeat!important;
+}
+.topbar,.content{position:relative!important;z-index:2!important}
+.flow-stage,.flow-svg,.flow-orb,.flow-particles{display:none!important;visibility:hidden!important;opacity:0!important}
+
+.brand-mark,.brand-mark-compact{
+  position:relative!important;
+  display:block!important;
+  background:none!important;
+  overflow:visible!important;
+  opacity:1!important;
+  visibility:visible!important;
+  flex:0 0 auto!important;
+}
+.brand-mark>img{
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:contain!important;
+  object-position:center!important;
+  opacity:1!important;
+  visibility:visible!important;
+}
+.brand-mark-compact{width:64px!important;height:64px!important}
+.hero-brand-watermark .brand-mark{width:104px!important;height:104px!important;opacity:1!important}
+.topbar{min-height:86px!important}
+
+.glass-surface,.loading-panel,.metric-card,.panel,.portfolio-kpi,.executive-strip{
+  background:linear-gradient(145deg,rgba(8,8,7,.68),rgba(3,3,3,.58))!important;
+}
+.hero{background:linear-gradient(145deg,rgba(9,9,8,.70),rgba(3,3,3,.60))!important}
+
+@media(max-width:650px){
+  .brand-mark-compact{width:58px!important;height:58px!important}
+  .topbar{min-height:80px!important}
+  .app-shell::before{
+    background-position:center top!important;
+    background-size:100vw auto!important;
+    background-repeat:repeat-y!important;
+  }
+}
