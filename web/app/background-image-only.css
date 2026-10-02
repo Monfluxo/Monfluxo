@@ -1,9 +1,9 @@
-/* MONFLUXO visual recovery layer — redundant image fallbacks so logo/background cannot disappear. */
+/* MONFLUXO final visual layer — keep this imported last. */
 html,body{
   min-height:100%;
   margin:0!important;
-  background-color:#030303!important;
-  background-image:url('/monfluxo-background.svg?v=20261002-force3')!important;
+  background-color:#020202!important;
+  background-image:url('/monfluxo-background.svg?v=20261002-force4')!important;
   background-position:center center!important;
   background-size:cover!important;
   background-repeat:no-repeat!important;
@@ -18,7 +18,6 @@ body{min-height:100vh!important}
 }
 .app-shell:before,.app-shell:after{content:none!important;display:none!important}
 
-/* Primary fixed image layer. */
 .flow-stage{
   position:fixed!important;
   inset:0!important;
@@ -33,8 +32,8 @@ body{min-height:100vh!important}
   animation:none!important;
   transform:none!important;
   filter:none!important;
-  background-color:#030303!important;
-  background-image:url('/monfluxo-background.svg?v=20261002-force3')!important;
+  background-color:#020202!important;
+  background-image:url('/monfluxo-background.svg?v=20261002-force4')!important;
   background-position:center center!important;
   background-size:cover!important;
   background-repeat:no-repeat!important;
@@ -44,32 +43,26 @@ body{min-height:100vh!important}
 }
 .topbar,.content{position:relative!important;z-index:2!important}
 
-/* Keep main surfaces translucent enough for the image to read through. */
+/* Let the gold/silver ribbons remain visible through the dashboard. */
 .glass-surface,.loading-panel,.metric-card,.panel,.portfolio-kpi,.executive-strip{
-  background:linear-gradient(145deg,rgba(9,9,8,.64),rgba(4,4,4,.54))!important;
+  background:linear-gradient(145deg,rgba(8,8,7,.58),rgba(3,3,3,.48))!important;
 }
-.hero{background:linear-gradient(145deg,rgba(10,10,9,.67),rgba(4,4,4,.56))!important}
+.hero{background:linear-gradient(145deg,rgba(9,9,8,.62),rgba(3,3,3,.50))!important}
 
-/* Visible DOM logo + CSS fallback on the same element. */
+/* Restore the raster logo asset that was previously proven visible. */
 .brand-mark,.brand-mark-compact{
   position:relative!important;
-  display:grid!important;
-  place-items:center!important;
-  background:url('/monfluxo-mark.svg?v=20261002-force3') center/contain no-repeat!important;
-  overflow:visible!important;
-}
-.brand-mark>img{
   display:block!important;
-  visibility:visible!important;
+  background-color:transparent!important;
+  background-image:url('/monfluxo-logo.webp?v=20261002-force4')!important;
+  background-position:center!important;
+  background-size:contain!important;
+  background-repeat:no-repeat!important;
+  overflow:visible!important;
   opacity:1!important;
-  width:100%!important;
-  height:100%!important;
-  object-fit:contain!important;
-  object-position:center!important;
-  position:relative!important;
-  z-index:3!important;
+  visibility:visible!important;
 }
-.brand-mark>svg{display:none!important}
+.brand-mark>img,.brand-mark>svg{display:none!important;visibility:hidden!important;opacity:0!important}
 
 @media(max-width:650px){
   html,body{background-position:center top!important;background-size:auto 100vh!important}
