@@ -8,6 +8,7 @@ import "./portfolio-summary.css";
 import "./production-ui-fix.css";
 import "./background-image-only.css";
 import "./visual-hard-fix.css";
+import "./mobile-background-fix.css";
 
 export const metadata = {
   title: "MONFLUXO Wallet Intelligence",
