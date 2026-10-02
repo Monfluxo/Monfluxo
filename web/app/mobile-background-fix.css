@@ -1,0 +1,24 @@
+/* Mobile MONFLUXO background framing fix: keep the full gold/silver artwork visible instead of center-cropping it out. */
+@media (max-width: 650px){
+  html,body{
+    background-image:var(--mf-bg)!important;
+    background-size:100vw auto!important;
+    background-position:center top!important;
+    background-repeat:repeat-y!important;
+    background-attachment:scroll!important;
+  }
+  .app-shell::before{
+    content:""!important;
+    display:block!important;
+    position:fixed!important;
+    inset:0!important;
+    z-index:0!important;
+    pointer-events:none!important;
+    background-image:var(--mf-bg)!important;
+    background-size:100vw auto!important;
+    background-position:center top!important;
+    background-repeat:repeat-y!important;
+    opacity:1!important;
+  }
+  .topbar,.content{position:relative!important;z-index:2!important}
+}
