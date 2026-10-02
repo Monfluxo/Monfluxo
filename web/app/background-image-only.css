@@ -1,15 +1,39 @@
-/* MONFLUXO background: one direct image only. No generated flow layers, pseudo-elements, particles or animation. */
+/* MONFLUXO visual recovery layer — force one visible background image and one visible logo asset. */
 html,body{
   min-height:100%;
-  background:#030303 url('/monfluxo-background.svg?v=20261002-direct') center top / cover fixed no-repeat!important;
+  margin:0!important;
+  background:#030303!important;
 }
 body{min-height:100vh!important}
 .app-shell{
+  position:relative!important;
   min-height:100vh!important;
+  isolation:isolate!important;
   background:transparent!important;
 }
-.app-shell:before,.app-shell:after,
-.flow-stage,.flow-stage:before,.flow-stage:after,
+.app-shell:before,.app-shell:after{
+  content:none!important;
+  display:none!important;
+}
+
+/* Use the existing FlowBackground DOM node as a plain fixed image layer. */
+.flow-stage{
+  position:fixed!important;
+  inset:0!important;
+  width:100vw!important;
+  height:100vh!important;
+  z-index:0!important;
+  display:block!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:none!important;
+  overflow:hidden!important;
+  animation:none!important;
+  transform:none!important;
+  filter:none!important;
+  background:#030303 url('/monfluxo-background.svg?v=20261002-force2') center center / cover no-repeat!important;
+}
+.flow-stage:before,.flow-stage:after,
 .flow-svg,.flow-orb,.flow-particles{
   content:none!important;
   display:none!important;
@@ -18,12 +42,32 @@ body{min-height:100vh!important}
   animation:none!important;
   background:none!important;
 }
-.topbar,.content{position:relative!important;z-index:1!important}
+.topbar,.content{position:relative!important;z-index:2!important}
+
+/* Stop hiding the real img already rendered inside BrandMark. */
+.brand-mark,.brand-mark-compact{
+  position:relative!important;
+  display:grid!important;
+  place-items:center!important;
+  background:none!important;
+  overflow:visible!important;
+}
+.brand-mark>img{
+  display:block!important;
+  visibility:visible!important;
+  opacity:1!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:contain!important;
+  object-position:center!important;
+  position:relative!important;
+  z-index:3!important;
+}
+.brand-mark>svg{display:none!important}
 
 @media(max-width:650px){
-  html,body{
+  .flow-stage{
     background-position:center top!important;
     background-size:auto 100vh!important;
-    background-attachment:fixed!important;
   }
 }
