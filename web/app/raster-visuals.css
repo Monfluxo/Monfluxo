@@ -1,4 +1,6 @@
-/* MONFLUXO definitive raster visuals — WebP assets only. */
+/* MONFLUXO background render diagnostic.
+   TEMPORARY: deliberately loud CSS-only background to prove whether the
+   fixed background layer is actually visible in production. */
 html,body{
   min-height:100%;
   margin:0!important;
@@ -7,10 +9,6 @@ html,body{
 body{min-height:100vh!important;}
 body::before,body::after{content:none!important;display:none!important}
 
-/* The supplied background is a portrait 1664x3704 WebP (~9:20).
-   `cover` on a desktop viewport crops away most of the artwork and leaves
-   the dark centre visible. Render the complete artwork across the viewport
-   on wide screens; preserve its natural portrait composition on mobile. */
 .monfluxo-raster-background{
   position:fixed!important;
   inset:0!important;
@@ -18,11 +16,9 @@ body::before,body::after{content:none!important;display:none!important}
   height:100vh!important;
   max-width:none!important;
   max-height:none!important;
-  object-fit:fill!important;
-  object-position:center center!important;
   display:block!important;
-  opacity:1!important;
-  visibility:visible!important;
+  opacity:0!important;
+  visibility:hidden!important;
   pointer-events:none!important;
   z-index:0!important;
 }
@@ -36,9 +32,9 @@ body::before,body::after{content:none!important;display:none!important}
   position:relative!important;
   min-height:100vh!important;
   isolation:auto!important;
-  background:transparent!important;
-  background-color:transparent!important;
-  background-image:none!important;
+  background:repeating-linear-gradient(135deg,#ff00d4 0 80px,#00eaff 80px 160px,#fff200 160px 240px,#ff3b00 240px 320px)!important;
+  background-color:#ff00d4!important;
+  animation:none!important;
 }
 .app-shell::before,.app-shell::after{content:none!important;display:none!important}
 
@@ -73,15 +69,11 @@ body::before,body::after{content:none!important;display:none!important}
 .topbar{min-height:94px!important}
 
 .glass-surface,.loading-panel,.metric-card,.panel,.portfolio-kpi,.executive-strip{
-  background:linear-gradient(145deg,rgba(8,8,7,.62),rgba(3,3,3,.52))!important;
+  background:rgba(5,5,5,.72)!important;
 }
-.hero{background:linear-gradient(145deg,rgba(9,9,8,.64),rgba(3,3,3,.54))!important}
+.hero{background:rgba(5,5,5,.68)!important}
 
 @media(max-width:650px){
-  .monfluxo-raster-background{
-    object-fit:cover!important;
-    object-position:center top!important;
-  }
   .brand-mark-compact{width:66px!important;height:66px!important}
   .topbar{min-height:88px!important}
 }
