@@ -203,6 +203,7 @@ export function buildWalletDashboardResponse(productResult) {
       status: coverage.status || "indexing",
       historyComplete,
       backfillPending: coverage.backfillPending === true,
+      budgetExhausted: coverage.budgetExhausted === true,
       pagesScanned: n(coverage.pagesScanned),
       oldestIndexedAt: coverage.oldestIndexedAt || null,
       newestIndexedAt: coverage.newestIndexedAt || null,
@@ -292,3 +293,4 @@ export function buildWalletDashboardResponse(productResult) {
     generatedAt: metrics.generatedAt || new Date().toISOString()
   };
 }
+
