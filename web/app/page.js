@@ -3,13 +3,13 @@ import Link from "next/link";
 export default function LandingPage() {
   return (
     <main className="landing-shell">
-      <nav className="landing-nav">
-        <Link href="/" className="landing-brand" aria-label="MONFLUXO home">
+      <header className="topbar glass-surface">
+        <Link href="/" className="brand-row landing-brand" aria-label="MONFLUXO home">
           <span className="brand-mark brand-mark-compact" aria-hidden="true" />
-          <span className="landing-wordmark">MONFLUXO</span>
+          <div><div className="brand-name">MONFLUXO</div><div className="brand-subtitle">Wallet Intelligence</div></div>
         </Link>
-        <Link href="/beta" className="landing-nav-cta">Enter Beta</Link>
-      </nav>
+        <div className="topbar-right"><Link href="/beta" className="landing-nav-cta">Enter Beta</Link></div>
+      </header>
 
       <section className="landing-hero">
         <div className="landing-eyebrow"><span /> PRIVATE BETA</div>
@@ -57,4 +57,5 @@ export default function LandingPage() {
     </main>
   );
 }
+
 
