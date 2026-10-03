@@ -20,9 +20,9 @@ export default function LandingPage() {
           <a href="#intelligence" className="landing-secondary">Explore the intelligence</a>
         </div>
         <div className="landing-proof">
-          <div><strong>10K+</strong><span>transactions reconstructed<br/>from a single wallet</span></div>
-          <div><strong>BUY / SELL</strong><span>behavior classified<br/>from raw transactions</span></div>
-          <div><strong>PnL</strong><span>positions and token<br/>lifecycles reconstructed</span></div>
+          <div><strong>10K+</strong><span>transactions reconstructed from a single wallet</span></div>
+          <div><strong>BUY / SELL</strong><span>behavior classified from raw transactions</span></div>
+          <div><strong>PnL</strong><span>positions and token lifecycles reconstructed</span></div>
         </div>
       </section>
 
@@ -33,10 +33,10 @@ export default function LandingPage() {
           <p>MONFLUXO reconstructs what happened, then turns it into a behavioral view you can actually use.</p>
         </div>
         <div className="landing-grid">
-          <article><span>01</span><h3>Trading Intelligence</h3><p>Understand buys, sells, token history, entry behavior and realized performance.</p></article>
-          <article><span>02</span><h3>Positions & PnL</h3><p>Reconstruct open and closed positions with realized and unrealized PnL.</p></article>
-          <article><span>03</span><h3>Creator Revenue</h3><p>Surface creator rewards and revenue flows hidden inside transaction history.</p></article>
-          <article><span>04</span><h3>Wallet Relationships</h3><p>Identify funding paths, behavioral overlap and relationships between wallets.</p></article>
+          <article><h3>Trading Intelligence</h3><p>Understand buys, sells, token history, entry behavior and realized performance.</p></article>
+          <article><h3>Positions & PnL</h3><p>Reconstruct open and closed positions with realized and unrealized PnL.</p></article>
+          <article><h3>Creator Revenue</h3><p>Surface creator rewards and revenue flows hidden inside transaction history.</p></article>
+          <article><h3>Wallet Relationships</h3><p>Identify funding paths, behavioral overlap and relationships between wallets.</p></article>
         </div>
       </section>
 
@@ -53,7 +53,6 @@ export default function LandingPage() {
         <Link href="/beta" className="landing-primary">Enter Private Beta <span>→</span></Link>
       </section>
 
-      <footer className="landing-footer"><span>MONFLUXO</span><span>On-chain intelligence for Solana.</span><span>© 2026</span></footer>
     </main>
   );
 }

@@ -1,54 +1,40 @@
+.monfluxo-footer {
+  width: min(1180px, calc(100% - 40px));
+  margin: 40px auto 0;
+  padding: 32px 0 40px;
+  border-top: 1px solid rgba(218,188,140,.14);
+  text-align: center;
+  color: #92968d;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.monfluxo-footer-brand { font-size: 13px; letter-spacing: .16em; color: #c2c2b9; }
+.monfluxo-footer p { margin: 8px 0 14px; }
+.monfluxo-footer-copyright { font-size: 11px; letter-spacing: .04em; }
 .monfluxo-social-links {
-  --social-icon-height: 36px;
-  position: fixed;
-  right: 22px;
-  bottom: 22px;
-  z-index: 1000;
+  --social-icon-height: 22px;
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 18px;
 }
 .monfluxo-social-links a {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  color: #d6ae62;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #b9b9ae;
   text-decoration: none;
-  transition: transform .16s ease, filter .16s ease;
+  font-size: 12px;
+  transition: color .16s ease;
 }
-.monfluxo-social-links a:hover {
-  transform: translateY(-2px);
-  filter: brightness(1.2);
-}
-.monfluxo-social-links a:focus-visible {
-  outline: 2px solid #d6ae62;
-  outline-offset: 4px;
-  border-radius: 4px;
-}
-.monfluxo-social-links svg {
-  display: block;
-  width: auto;
-  height: var(--social-icon-height);
-  fill: currentColor;
-}
-/* WebP alpha bounds: y=55..1172 of 1254px. Match visible artwork height to X and center it. */
-.monfluxo-social-links .pumpfun-social img {
-  display: block;
-  width: auto;
-  height: calc(var(--social-icon-height) * 1.12265);
-  object-fit: contain;
-  transform: translateY(calc(var(--social-icon-height) * .012086));
-}
-@media (max-width: 650px) {
-  .monfluxo-social-links {
-    --social-icon-height: 32px;
-    right: 12px;
-    bottom: 12px;
-    gap: 10px;
-  }
-  .monfluxo-social-links a {
-    width: 44px;
-    height: 44px;
-  }
-}
+.monfluxo-social-links a:hover { color: #e0c18c; }
+.monfluxo-social-links a:focus-visible { outline: 2px solid #d6ae62; outline-offset: 5px; border-radius: 3px; }
+.monfluxo-social-links svg { display: block; width: auto; height: var(--social-icon-height); fill: #d6ae62; flex-shrink: 0; }
+/* Match the visible WebP artwork height to X, allowing for transparent bounds. */
+.monfluxo-social-links .pumpfun-social img { display: block; width: auto; height: calc(var(--social-icon-height) * 1.12265); object-fit: contain; transform: translateY(calc(var(--social-icon-height) * .012086)); }
+.social-divider { color: #78684e; font-size: 10px; }
+@media(max-width:360px) { .monfluxo-social-links { gap: 10px; } .monfluxo-social-links a { gap: 6px; font-size: 11px; } }
+@media(prefers-reduced-motion:reduce) { .monfluxo-social-links a { transition: none; } }
