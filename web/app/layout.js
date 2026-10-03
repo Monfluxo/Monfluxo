@@ -7,6 +7,7 @@ import "./portfolio-summary.css";
 import "./production-ui-fix.css";
 import "./raster-visuals.css";
 import "./landing.css";
+import "./social-links.css";
 import SocialLinks from "./SocialLinks";
 
 export const metadata = {
