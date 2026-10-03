@@ -1,6 +1,21 @@
 # Auditoría Trade Journey — 3 octubre 2026
 
-Base revisada: `dca09ce4123f118ea81fbacb81c29684fdc8c6ed` (main observado). Auditoría de código y pruebas locales con dependencias simuladas; no validación de producción ni consultas a la base real. No se modifican el motor, los datos ni los contratos de la API en esta propuesta.
+Base revisada: `dca09ce4123f118ea81fbacb81c29684fdc8c6ed` (main observado). Auditoría de código y pruebas locales con dependencias simuladas; no validación de producción ni consultas a la base real. La auditoría inicial no modificaba el motor ni la API; las reparaciones posteriores se detallan abajo.
+
+## Reparaciones aplicadas después de la auditoría
+
+- Identidad v2 basada en mint, firma de entrada y eventIndex; los aliases antiguos se aceptan sólo si resuelven exactamente un ciclo. IDs inexistentes/ambiguos devuelven null/404; valores vacíos o duplicados devuelven 400.
+- El ranking oculta una fila legacy cuando está presente su equivalente v2; conserva ciclos v2 distintos del mismo segundo. La persistencia omite IDs duplicados y serializa fechas desconocidas como null.
+- Orden por slot disponible; hold queda desconocido si falta una fecha en el volumen emparejado. Los cambios no inventan una duración a partir de un timestamp ausente.
+- Normalización temporal explícita (segundos o ISO con zona); strings vacíos, booleanos y milisegundos no se convierten en 1970. Helpers puros en web/lib/tradeJourney.mjs.
+- Página servidor resuelve params/searchParams y remonta el cliente por identidad. Fetch cancelable, respuestas obsoletas ignoradas, estado/error limpio, validación de wallet/mint/ID y normalización de eventos/metadatos.
+- Siete tracks CSS; signos/colores coherentes. Etiquetas REALIZED COST / MATCHED PROCEEDS hacen explícita la semántica contable existente.
+- Imagen exacta del usuario incluida como asset público en el botón global, conservando su enlace.
+- Next.js 15.5.4 emitió una advertencia de vulnerabilidad durante instalación. Se actualizó dentro de la misma rama a 15.5.27, React/React DOM a 19.1.9 y se añadió lockfile. Referencias: https://nextjs.org/blog/CVE-2025-66478 y https://nextjs.org/blog/security-update-2025-12-11.
+
+Verificación actual: 41 pruebas aprobadas, 0 TODO; build Next.js 15.5.27 aprobado. Smoke HTTP local: landing, beta, data y detalle responden 200 e incluyen el asset/enlace de Pump.fun; PNG responde 200 y coincide por SHA-256 con el adjunto; proxy reenvía journey, conserva 404 del backend simulado y rechaza claves vacías/duplicadas con 400. No equivale a validación visual: el navegador bloqueó localhost y monfluxo.com aún no está conectado (confirmado por el usuario); el entorno activo es GitHub/Railway. La sección de pruebas original más abajo describe el estado ANTES de estas reparaciones. No se cambió schema ni se ejecutó backfill en producción. El detalle aún reconstruye eventos y no promete un snapshot idéntico al ranking; si un backfill cambia el inicio del ciclo, un alias antiguo puede responder 404 de forma segura. Registros antiguos colisionados necesitan reconstrucción para recuperar el ciclo perdido. La paginación bajo escrituras concurrentes sigue siendo un límite documentado.
+
+## Auditoría original (estado anterior a las reparaciones)
 
 ## Qué corrigieron los seis commits
 
