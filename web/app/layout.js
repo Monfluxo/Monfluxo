@@ -7,6 +7,7 @@ import "./portfolio-summary.css";
 import "./production-ui-fix.css";
 import "./raster-visuals.css";
 import "./landing.css";
+import SocialLinks from "./SocialLinks";
 
 export const metadata = {
   title: "MONFLUXO — On-chain Intelligence for Solana",
@@ -24,6 +25,7 @@ export default function RootLayout({ children }) {
           aria-hidden="true"
         />
         <div className="monfluxo-app-layer">{children}</div>
+        <SocialLinks />
       </body>
     </html>
   );
