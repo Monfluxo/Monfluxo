@@ -1,3 +1,4 @@
+import {restoreOutboundLots} from "./transferReturnLots.js";
 const EPSILON = 0.000000001;
 const LOW_CONFIDENCE_DUST_TOKEN_MAX = 0.00001;
 const LOW_CONFIDENCE_RENT_SOL_MAX = 0.003;
@@ -63,6 +64,9 @@ function ensurePosition(positions, mint, blockTime = null) {
       lastBlockTime: blockTime,
       lastPriceSol: null,
       lots: [],
+      outboundLots: [],
+      returnedTokens: 0,
+      returnedCostSol: 0,
       realizedTrades: [],
       externalSales: []
     });
@@ -93,6 +97,7 @@ function consumeLots(position, tokenAmount, blockTime, purpose) {
     const lot = position.lots[0];
     const tokensFromLot = Math.min(remaining, lot.tokens);
     const ratio = lot.tokens > EPSILON ? tokensFromLot / lot.tokens : 0;
+    if (purpose === "TRANSFER_OUT") position.outboundLots.push({...lot,tokens:tokensFromLot,costSol:lot.costSol == null ? null : lot.costSol * ratio});
 
     if (lot.origin === "BUY" && lot.costSol != null) {
       const cost = lot.costSol * ratio;
@@ -232,7 +237,16 @@ export function buildPositions(trades, transfers = [], rewards = []) {
       if (transfer.direction === "IN") {
         position.transferIns++;
         position.tokensTransferredIn += transfer.amount;
-        position.lots.push({ tokens: transfer.amount, costSol: null, origin: "TRANSFER_IN", signature: transfer.signature, blockTime: transfer.blockTime });
+        const restored = restoreOutboundLots(position.outboundLots, transfer.amount, "costSol");
+        position.lots.push(...restored.lots);
+        for (const lot of restored.lots) {
+          position.returnedTokens += lot.tokens;
+          if (lot.costSol != null) {
+            position.returnedCostSol += lot.costSol;
+            position.transferredOutKnownCostSol = Math.max(0,position.transferredOutKnownCostSol-lot.costSol);
+          }
+        }
+        if (restored.remaining > EPSILON) position.lots.push({ tokens: restored.remaining, costSol: null, origin: "TRANSFER_IN", signature: transfer.signature, blockTime: transfer.blockTime });
       } else {
         position.transferOuts++;
         position.tokensTransferredOut += transfer.amount;
@@ -348,6 +362,7 @@ export function buildPositions(trades, transfers = [], rewards = []) {
     position.pnlComplete = position.unmatchedSoldTokens <= EPSILON;
 
     delete position.lots;
+    delete position.outboundLots;
 
     for (const field of ["unmatchedSoldTokens", "unmatchedSellProceedsSol", "unknownCostSoldTokens", "unknownCostSellProceedsSol", "unmatchedTransferredOutTokens"]) {
       if (position[field] <= EPSILON) delete position[field];

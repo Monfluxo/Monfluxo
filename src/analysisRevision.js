@@ -1,4 +1,4 @@
-export const ANALYSIS_VERSION = 3;
+export const ANALYSIS_VERSION = 4;
 export function analysisRevision(state) {
   return JSON.stringify([
     state?.last_synced_at ?? null, state?.backfill_updated_at ?? null,

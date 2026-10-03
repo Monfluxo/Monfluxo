@@ -174,11 +174,11 @@ test('backend forwards exact journey, returns 404, and rejects duplicate keys',a
 });
 
 
-test('transfer out and later same-quantity inflow cannot silently inherit purchased cost',()=>{
+test('transfer out and later same-mint inflow restore the original purchased cost',()=>{
  const trades=[{tokenMint:mint,type:'BUY',tokenAmount:100,solAmount:10,blockTime:100,signature:'buy'},{tokenMint:mint,type:'SELL',tokenAmount:100,solAmount:180,blockTime:400,signature:'sale'}];
  const transfers=[{mint,amount:100,direction:'OUT',blockTime:200,signature:'out'},{mint,amount:100,direction:'IN',blockTime:300,signature:'in'}];
  const journeys=buildTradeJourneys(trades,transfers);
- assert.equal(journeys.some(j=>j.closed&&j.realizedPnl>0),false);
- assert.equal(journeys[0].transferredOut,true);
- assert.equal(journeys[0].realizedPnl,0);
+ assert.equal(journeys[0].closed,true);
+ assert.equal(journeys[0].returnedTokens,100);
+ assert.equal(journeys[0].realizedPnl,170);
 });

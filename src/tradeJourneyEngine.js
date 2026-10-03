@@ -1,3 +1,4 @@
+import {restoreOutboundLots} from "./transferReturnLots.js";
 import { buildAccountingEvents } from "./positionEngine.js";
 const EPS = 1e-9;
 const finite = v => ['number','string'].includes(typeof v) && !(typeof v === 'string' && !v.trim()) && Number.isFinite(Number(v));
@@ -18,8 +19,9 @@ export function buildTradeJourneys(trades, transfers = [], rewards = []) {
   }
   const out = [];
   for (const [mint, events] of byMint) {
-    let j = null;
-    const lots = [];
+    let active = null;
+    const lots = [], outbound = [], journeys = [];
+    const addEvent = (j,e) => { if (!j.events.includes(e)) j.events.push(e); };
     for (const event of events) {
       const e = {...event.data, blockTime: time(event.data.blockTime)};
       const buy = event.kind === 'TRADE' && e.type === 'BUY';
@@ -27,45 +29,57 @@ export function buildTradeJourneys(trades, transfers = [], rewards = []) {
       const inflow = event.kind === 'REWARD' || (event.kind === 'TRANSFER' && e.direction === 'IN');
       const qty = Number(event.kind === 'TRADE' ? e.tokenAmount : e.amount);
       if (!(qty > 0) || !Number.isFinite(qty)) continue;
-      if (inflow) { lots.push({tokens: qty, cost: null, time: e.blockTime}); continue; }
-      if (buy) {
-        if (!j) j = {tokenMint: mint, events: [], tokensBought: 0, tokensSold: 0, costSol: 0, proceedsSol: 0, realizedCost: 0, realizedPnl: 0, holdingWeighted: 0, matchedTokens: 0, holdComplete: true, entryTime: e.blockTime, exitTime: null};
-        j.events.push(e); j.tokensBought += qty; j.costSol += Number(e.solAmount);
-        lots.push({tokens: qty, cost: Number(e.solAmount), time: e.blockTime});
+      if (event.kind === 'TRANSFER') e.type = `TRANSFER_${e.direction}`;
+      if (inflow) {
+        if (event.kind === 'TRANSFER') {
+          const restored = restoreOutboundLots(outbound,qty,'cost');
+          lots.push(...restored.lots);
+          for (const lot of restored.lots) if (lot.journey) {
+            addEvent(lot.journey,e);
+            lot.journey.returnedTokens = (lot.journey.returnedTokens || 0) + lot.tokens;
+            if (!active) active = lot.journey;
+          }
+          if (restored.remaining > EPS) lots.push({tokens:restored.remaining,cost:null,time:e.blockTime});
+        } else lots.push({tokens:qty,cost:null,time:e.blockTime});
         continue;
       }
-      if (j) j.events.push(e);
-      let remaining = qty, matched = 0, cost = 0, hold = 0;
-      while (remaining > EPS && lots.length) {
-        const lot = lots[0], take = Math.min(remaining, lot.tokens), ratio = take / lot.tokens;
-        if (lot.cost !== null) {
-          cost += lot.cost * ratio; matched += take;
-          if (sell && j) {
-            if (lot.time !== null && e.blockTime !== null && e.blockTime >= lot.time) hold += take * (e.blockTime - lot.time);
-            else j.holdComplete = false;
-          }
-          lot.cost -= lot.cost * ratio;
+      if (buy) {
+        if (!active) {
+          active = {tokenMint:mint,events:[],tokensBought:0,tokensSold:0,costSol:0,proceedsSol:0,realizedCost:0,realizedPnl:0,holdingWeighted:0,matchedTokens:0,holdComplete:true,entryTime:e.blockTime,exitTime:null,outstanding:0};
+          journeys.push(active);
         }
-        lot.tokens -= take; remaining -= take;
+        addEvent(active,e);active.tokensBought += qty;active.outstanding += qty;active.costSol += Number(e.solAmount);
+        lots.push({tokens:qty,cost:Number(e.solAmount),time:e.blockTime,journey:active});
+        continue;
+      }
+      let remaining = qty;
+      while (remaining > EPS && lots.length) {
+        const lot = lots[0],take = Math.min(remaining,lot.tokens),cost = lot.cost === null ? null : lot.cost * take / lot.tokens;
+        const j = lot.journey;
+        if (j) addEvent(j,e);
+        if (!sell) outbound.push({...lot,tokens:take,cost});
+        if (cost !== null) {
+          if (sell && j) {
+            const quote = Number(e.solAmount)*take/qty;
+            j.tokensSold += take;j.outstanding -= take;j.proceedsSol += quote;
+            j.realizedCost += cost;j.realizedPnl += quote-cost;j.matchedTokens += take;
+            if (lot.time !== null && e.blockTime !== null && e.blockTime >= lot.time) j.holdingWeighted += take*(e.blockTime-lot.time);
+            else j.holdComplete = false;
+            j.exitTime = e.blockTime;
+          }
+          lot.cost -= cost;
+        }
+        lot.tokens -= take;remaining -= take;
         if (lot.tokens <= EPS) lots.shift();
       }
-      if (!j) continue;
-      if (sell) {
-        const quote = Number(e.solAmount), proceedsMatched = quote * (matched / qty);
-        j.tokensSold += qty; j.proceedsSol += quote;
-        j.realizedCost += cost; j.realizedPnl += proceedsMatched - cost;
-        j.holdingWeighted += hold; j.matchedTokens += matched;
-      } else if (matched > EPS) {
-        j.transferredOut = true;
-      }
-      if (lots.filter(lot => lot.cost !== null).reduce((sum, lot) => sum + lot.tokens, 0) <= EPS) {
-        j.exitTime = e.blockTime;
-        // A transfer is not a realized sale. Keep this lifecycle out of rankings.
-        j.closed = sell && !j.transferredOut;
-        finalize(j, out); j = null;
-      }
+      if (active && !lots.some(lot=>lot.journey === active && lot.tokens > EPS)) active = null;
     }
-    if (j) { j.closed = false; finalize(j, out); }
+    for (const j of journeys) {
+      j.closed = j.outstanding <= EPS && j.matchedTokens > EPS;
+      j.transferredOut = outbound.some(lot=>lot.journey === j && lot.tokens > EPS);
+      if (!j.closed) j.exitTime = null;
+      delete j.outstanding;finalize(j,out);
+    }
   }
   return out;
 }

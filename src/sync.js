@@ -1,3 +1,5 @@
+import {createHash} from "node:crypto";
+import {exactTransactionBase,acceptedHistoryPage} from "./transactionCounter.js";
 import { persistWalletEventPage } from "./db.js";
 import { assertWalletAllowed, claimWalletSyncLease } from "./walletPolicy.js";
 import { transactionAllowance, indexedWork } from "./analysisBudget.js";
@@ -273,7 +275,6 @@ async function enrichFromTokenAccounts({
           tokenAccounts: "none"
         });
         const transactions = result?.data || [];
-      if (!Array.isArray(transactions) || transactions.length > requestedLimit) throw new Error("history_page_exceeds_budget");
         if (!transactions.length) break;
 
         const txRows = [];
@@ -326,7 +327,7 @@ async function enrichFromTokenAccounts({
 }
 
 export async function syncWalletHistory(address, options = {}) {
-  const {
+  let {
     mode = "incremental",
     maxPages = mode === "quick"
       ? Number(process.env.MAX_QUICK_PAGES || 5)
@@ -338,6 +339,7 @@ export async function syncWalletHistory(address, options = {}) {
   await assertEventModelV2Schema();
 
   let previous = await getSyncState(address);
+  if (previous?.history_complete === true && mode === "deep") mode = "incremental";
   let allowance = transactionAllowance(previous, policy);
   if (!allowance) return { address, mode, pages: 0, transactionsStored: 0, historyComplete: false, budgetExhausted: true, backfillCursorSaved: Boolean(previous?.backfill_pagination_token), status: "paused" };
   if (previous?.status === "syncing") {
@@ -392,6 +394,7 @@ export async function syncWalletHistory(address, options = {}) {
   let stoppedOnExisting = false;
   let budgetExhausted = false;
   const baseWork = indexedWork(previous);
+  const exactBase = exactTransactionBase(previous);
   let newest = null;
   let oldest = null;
   const inventory = new Map();
@@ -414,10 +417,14 @@ export async function syncWalletHistory(address, options = {}) {
       });
       const historyMs = Date.now() - pageStarted;
       const historyBytes = Buffer.byteLength(JSON.stringify(result));
-      const transactions = result?.data || [];
+      const returned = result?.data || [];
+      if (!Array.isArray(returned)) throw new Error("invalid_history_page");
+      const accepted = acceptedHistoryPage(returned,previous?.newest_signature,mode !== "deep");
+      const transactions = accepted.transactions;
+      stoppedOnExisting = accepted.stoppedOnExisting;
       if (!Array.isArray(transactions) || transactions.length > requestedLimit) throw new Error("history_page_exceeds_budget");
       if (!transactions.length) {
-        paginationToken = null;
+        paginationToken = stoppedOnExisting ? paginationToken : null;
         break;
       }
 
@@ -486,7 +493,7 @@ export async function syncWalletHistory(address, options = {}) {
           if (!newest || tx.blockTime > newest.blockTime) {
             newest = { blockTime: tx.blockTime, signature };
           }
-          if (!oldest || tx.blockTime < oldest.blockTime) {
+          if (!oldest || tx.blockTime <= oldest.blockTime) {
             oldest = { blockTime: tx.blockTime, signature };
           }
         }
@@ -494,11 +501,15 @@ export async function syncWalletHistory(address, options = {}) {
 
       const checkpointAt = new Date().toISOString();
       const nextToken = result?.paginationToken || null;
-      const checkpoint = mode === "deep" && !stoppedOnExisting ? {
-        backfill_pagination_token: nextToken, backfill_started_at: startedAt,
-        backfill_updated_at: checkpointAt, transactions_scanned: baseWork + work + transactions.length,
-        pages_scanned: Number(previous?.pages_scanned || 0) + page, updated_at: checkpointAt
-      } : null;
+      const checkpoint = {
+        backfill_pagination_token: mode === "deep" ? nextToken : previous?.backfill_pagination_token || null, backfill_started_at: startedAt,
+        backfill_updated_at: checkpointAt, transactions_scanned: exactBase === null ? null : exactBase + work + transactions.length,
+        pages_scanned: Number(previous?.pages_scanned || 0) + page, updated_at: checkpointAt,
+        newest_signature: newest && (secondsFromIso(previous?.newest_block_time) == null || newest.blockTime > secondsFromIso(previous.newest_block_time)) ? newest.signature : previous?.newest_signature || newest?.signature || null,
+        oldest_signature: oldest && (secondsFromIso(previous?.oldest_block_time) == null || oldest.blockTime <= secondsFromIso(previous.oldest_block_time)) ? oldest.signature : previous?.oldest_signature || oldest?.signature || null,
+        page_key: createHash("sha256").update(reparsedSignatures.join("\n")).digest("hex"),
+        page_transactions: transactions.length, scan_mode: mode
+      };
       const persistStarted = Date.now();
       await persistWalletEventPage(address, reparsedSignatures, {
         transactions: txRows, trades: tradeRows, transfers: transferRows,
@@ -545,7 +556,7 @@ export async function syncWalletHistory(address, options = {}) {
       wallet_address: address,
       status: "idle",
       pages_scanned: Number(previous?.pages_scanned || 0) + page,
-      transactions_scanned: baseWork + work,
+      transactions_scanned: exactBase === null ? null : exactBase + work,
       last_synced_at: now,
       updated_at: now
     };
