@@ -5,7 +5,8 @@ export default function LandingPage() {
     <main className="landing-shell">
       <nav className="landing-nav">
         <Link href="/" className="landing-brand" aria-label="MONFLUXO home">
-          <img src="/monfluxo-logo.webp" alt="MONFLUXO" />
+          <span className="brand-mark brand-mark-compact" aria-hidden="true" />
+          <span className="landing-wordmark">MONFLUXO</span>
         </Link>
         <Link href="/beta" className="landing-nav-cta">Enter Beta</Link>
       </nav>
@@ -56,3 +57,4 @@ export default function LandingPage() {
     </main>
   );
 }
+
