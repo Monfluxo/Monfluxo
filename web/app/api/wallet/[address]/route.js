@@ -1,10 +1,11 @@
 const BACKEND_BASE = process.env.MONFLUXO_BACKEND_URL || "http://127.0.0.1:3000";
 export async function GET(_request, { params }) {
   const { address } = await params;
+  const metadata = new URL(_request.url).searchParams.get("metadata") === "full" ? "?metadata=full" : "";
   // Always consult the backend so new restrictions apply immediately.
 
   try {
-    const response = await fetch(`${BACKEND_BASE}/api/wallet/${encodeURIComponent(address)}`, {
+    const response = await fetch(`${BACKEND_BASE}/api/wallet/${encodeURIComponent(address)}${metadata}`, {
       cache: "no-store"
     });
 
