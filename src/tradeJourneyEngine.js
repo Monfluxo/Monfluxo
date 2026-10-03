@@ -1,3 +1,4 @@
+import { buildAccountingEvents } from "./positionEngine.js";
 const EPS = 1e-9;
 const finite = v => ['number','string'].includes(typeof v) && !(typeof v === 'string' && !v.trim()) && Number.isFinite(Number(v));
 const time = v => finite(v) && Number(v) >= 0 ? Number(v) : null;
@@ -8,49 +9,60 @@ export function holdLabel(sec) {
   if (sec < 86400) return `${(sec / 3600).toFixed(1)}h`;
   return `${(sec / 86400).toFixed(1)}d`;
 }
-function order(a, b) {
-  // Slots remain chronological when blockTime is missing; do not coerce null to epoch.
-  if (finite(a.slot) && finite(b.slot) && Number(a.slot) !== Number(b.slot)) return Number(a.slot) - Number(b.slot);
-  const at = time(a.blockTime), bt = time(b.blockTime);
-  if (at !== null && bt !== null && at !== bt) return at - bt;
-  return (Number(a.eventIndex) || 0) - (Number(b.eventIndex) || 0) || String(a.signature || '').localeCompare(String(b.signature || ''));
-}
-export function buildTradeJourneys(trades) {
+export function buildTradeJourneys(trades, transfers = [], rewards = []) {
   const byMint = new Map();
-  for (const t of trades || []) {
-    if (!t?.tokenMint || !['BUY', 'SELL'].includes(t.type)) continue;
-    if (!byMint.has(t.tokenMint)) byMint.set(t.tokenMint, []);
-    byMint.get(t.tokenMint).push({...t, blockTime: time(t.blockTime)});
+  for (const event of buildAccountingEvents(trades, transfers, rewards)) {
+    const mint = event.data.tokenMint || event.data.mint || event.data.quoteMint;
+    if (!byMint.has(mint)) byMint.set(mint, []);
+    byMint.get(mint).push(event);
   }
   const out = [];
   for (const [mint, events] of byMint) {
-    events.sort(order);
     let j = null;
-    for (const e of events) {
-      const qty = Number(e.tokenAmount), quote = Number(e.solAmount);
-      if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(quote) || quote < 0) continue;
-      if (e.type === 'BUY') {
-        if (!j) j = {tokenMint: mint, events: [], lots: [], tokensBought: 0, tokensSold: 0, costSol: 0, proceedsSol: 0, realizedCost: 0, realizedPnl: 0, holdingWeighted: 0, matchedTokens: 0, holdComplete: true, entryTime: e.blockTime, exitTime: null};
-        j.events.push(e); j.tokensBought += qty; j.costSol += quote;
-        j.lots.push({tokens: qty, cost: quote, time: e.blockTime});
+    const lots = [];
+    for (const event of events) {
+      const e = {...event.data, blockTime: time(event.data.blockTime)};
+      const buy = event.kind === 'TRADE' && e.type === 'BUY';
+      const sell = event.kind === 'TRADE' && e.type === 'SELL';
+      const inflow = event.kind === 'REWARD' || (event.kind === 'TRANSFER' && e.direction === 'IN');
+      const qty = Number(event.kind === 'TRADE' ? e.tokenAmount : e.amount);
+      if (!(qty > 0) || !Number.isFinite(qty)) continue;
+      if (inflow) { lots.push({tokens: qty, cost: null, time: e.blockTime}); continue; }
+      if (buy) {
+        if (!j) j = {tokenMint: mint, events: [], tokensBought: 0, tokensSold: 0, costSol: 0, proceedsSol: 0, realizedCost: 0, realizedPnl: 0, holdingWeighted: 0, matchedTokens: 0, holdComplete: true, entryTime: e.blockTime, exitTime: null};
+        j.events.push(e); j.tokensBought += qty; j.costSol += Number(e.solAmount);
+        lots.push({tokens: qty, cost: Number(e.solAmount), time: e.blockTime});
         continue;
       }
-      if (!j) continue;
-      j.events.push(e); j.tokensSold += qty; j.proceedsSol += quote;
+      if (j) j.events.push(e);
       let remaining = qty, matched = 0, cost = 0, hold = 0;
-      while (remaining > EPS && j.lots.length) {
-        const lot = j.lots[0], take = Math.min(remaining, lot.tokens), ratio = take / lot.tokens;
-        cost += lot.cost * ratio; matched += take;
-        if (lot.time !== null && e.blockTime !== null && e.blockTime >= lot.time) hold += take * (e.blockTime - lot.time);
-        else j.holdComplete = false;
-        lot.cost -= lot.cost * ratio; lot.tokens -= take; remaining -= take;
-        if (lot.tokens <= EPS) j.lots.shift();
+      while (remaining > EPS && lots.length) {
+        const lot = lots[0], take = Math.min(remaining, lot.tokens), ratio = take / lot.tokens;
+        if (lot.cost !== null) {
+          cost += lot.cost * ratio; matched += take;
+          if (sell && j) {
+            if (lot.time !== null && e.blockTime !== null && e.blockTime >= lot.time) hold += take * (e.blockTime - lot.time);
+            else j.holdComplete = false;
+          }
+          lot.cost -= lot.cost * ratio;
+        }
+        lot.tokens -= take; remaining -= take;
+        if (lot.tokens <= EPS) lots.shift();
       }
-      const proceedsMatched = quote * (matched / qty);
-      j.realizedCost += cost; j.realizedPnl += proceedsMatched - cost;
-      j.holdingWeighted += hold; j.matchedTokens += matched;
-      if (j.lots.reduce((sum, lot) => sum + lot.tokens, 0) <= EPS) {
-        j.exitTime = e.blockTime; j.closed = true; finalize(j, out); j = null;
+      if (!j) continue;
+      if (sell) {
+        const quote = Number(e.solAmount), proceedsMatched = quote * (matched / qty);
+        j.tokensSold += qty; j.proceedsSol += quote;
+        j.realizedCost += cost; j.realizedPnl += proceedsMatched - cost;
+        j.holdingWeighted += hold; j.matchedTokens += matched;
+      } else if (matched > EPS) {
+        j.transferredOut = true;
+      }
+      if (lots.filter(lot => lot.cost !== null).reduce((sum, lot) => sum + lot.tokens, 0) <= EPS) {
+        j.exitTime = e.blockTime;
+        // A transfer is not a realized sale. Keep this lifecycle out of rankings.
+        j.closed = sell && !j.transferredOut;
+        finalize(j, out); j = null;
       }
     }
     if (j) { j.closed = false; finalize(j, out); }

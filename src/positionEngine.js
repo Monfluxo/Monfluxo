@@ -146,6 +146,7 @@ function consumeLots(position, tokenAmount, blockTime, purpose) {
 }
 
 function eventSlot(value) {
+  if (value == null || value === "") return null;
   const slot = Number(value);
   return Number.isFinite(slot) ? slot : null;
 }
@@ -155,8 +156,7 @@ function transferTradeKey(signature, mint, direction) {
   return `${signature}|${mint}|${direction}`;
 }
 
-export function buildPositions(trades, transfers = [], rewards = []) {
-  const positions = new Map();
+export function buildAccountingEvents(trades, transfers = [], rewards = []) {
   const events = [];
   const swapTransferKeys = new Set();
   const rewardTransferKeys = new Set();
@@ -207,13 +207,20 @@ export function buildPositions(trades, transfers = [], rewards = []) {
 
   const priority = { REWARD: 0, TRADE: 1, TRANSFER: 2 };
   events.sort((a, b) => {
-    const timeDiff = (a.blockTime ?? 0) - (b.blockTime ?? 0);
-    if (timeDiff !== 0) return timeDiff;
     if (a.slot != null && b.slot != null && a.slot !== b.slot) return a.slot - b.slot;
+    const timeDiff = a.blockTime != null && b.blockTime != null ? a.blockTime - b.blockTime : 0;
+    if (timeDiff !== 0) return timeDiff;
     if (a.kind !== b.kind) return priority[a.kind] - priority[b.kind];
     if (a.eventIndex !== b.eventIndex) return a.eventIndex - b.eventIndex;
     return a.signature.localeCompare(b.signature);
   });
+
+  return events;
+}
+
+export function buildPositions(trades, transfers = [], rewards = []) {
+  const positions = new Map();
+  const events = buildAccountingEvents(trades, transfers, rewards);
 
   for (const event of events) {
     if (event.kind === "TRANSFER") {
@@ -349,3 +356,4 @@ export function buildPositions(trades, transfers = [], rewards = []) {
 
   return positions;
 }
+

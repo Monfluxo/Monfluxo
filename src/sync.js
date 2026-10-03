@@ -1,3 +1,4 @@
+import { persistWalletEventPage } from "./db.js";
 import { assertWalletAllowed, claimWalletSyncLease } from "./walletPolicy.js";
 import { transactionAllowance, indexedWork } from "./analysisBudget.js";
 import { getTransactionsForAddress } from "./helius.js";
@@ -60,9 +61,9 @@ function ownedTokenAccounts(tx, wallet) {
 }
 
 function isoFromBlockTime(blockTime) {
-  return typeof blockTime === "number"
-    ? new Date(blockTime * 1000).toISOString()
-    : null;
+  if (typeof blockTime !== "number" || !Number.isFinite(blockTime)) return null;
+  const date = new Date(blockTime * 1000);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 function secondsFromIso(value) {
@@ -84,10 +85,11 @@ function normalizedTransaction(wallet, tx, analysis, storeRaw) {
   };
 }
 
-function normalizedReward(wallet, reward) {
+function normalizedReward(wallet, reward, slot = null) {
   return {
     wallet_address: wallet,
     signature: reward.signature,
+    slot,
     block_time: isoFromBlockTime(reward.blockTime),
     reward_type: "CREATOR_FEE",
     quote_mint: reward.quoteMint,
@@ -104,10 +106,11 @@ function normalizedReward(wallet, reward) {
   };
 }
 
-function normalizedTrade(wallet, trade) {
+function normalizedTrade(wallet, trade, slot = null) {
   return {
     wallet_address: wallet,
     signature: trade.signature,
+    slot,
     event_index: Number.isInteger(trade.eventIndex) ? trade.eventIndex : 0,
     instruction_index: Number.isInteger(trade.instructionIndex)
       ? trade.instructionIndex
@@ -124,10 +127,11 @@ function normalizedTrade(wallet, trade) {
   };
 }
 
-function normalizedTransfer(wallet, transfer) {
+function normalizedTransfer(wallet, transfer, slot = null) {
   return {
     wallet_address: wallet,
     signature: transfer.signature,
+    slot,
     event_index: Number.isInteger(transfer.eventIndex) ? transfer.eventIndex : 0,
     instruction_index: Number.isInteger(transfer.instructionIndex)
       ? transfer.instructionIndex
@@ -290,7 +294,7 @@ async function enrichFromTokenAccounts({
           supplementalSeen.add(signature);
           txRows.push(normalizedTransaction(address, tx, analysis, storeRaw));
           for (const transfer of relevantTransfers) {
-            transferRows.push(normalizedTransfer(address, transfer));
+            transferRows.push(normalizedTransfer(address, transfer, tx?.slot ?? null));
           }
           observeAnalysis(inventory, {
             trades: [],
@@ -401,7 +405,8 @@ export async function syncWalletHistory(address, options = {}) {
       if (currentPolicy.transaction_limit < policy.transaction_limit && work >= transactionAllowance(previous, currentPolicy)) { budgetExhausted = true; break; }
       page++;
 
-      const requestedLimit = Math.min(100, Math.min(allowance,transactionAllowance(previous,currentPolicy))-work);
+      const pageLimit = Math.min(1000, Math.max(1, Number(process.env.HELIUS_FULL_PAGE_LIMIT || 100)));
+      const requestedLimit = Math.min(pageLimit, Math.min(allowance,transactionAllowance(previous,currentPolicy))-work);
       const result = await getTransactionsForAddress(address, paginationToken, {
         tokenAccounts: tokenAccountsFilter,
         limit: requestedLimit
@@ -448,20 +453,20 @@ export async function syncWalletHistory(address, options = {}) {
 
         for (const trade of analysis?.trades || []) {
           if (trade?.type === "BUY" || trade?.type === "SELL") {
-            tradeRows.push(normalizedTrade(address, trade));
+            tradeRows.push(normalizedTrade(address, trade, tx?.slot ?? null));
             if (trade?.tokenMint) relevantTransferMints.add(trade.tokenMint);
           }
         }
 
         for (const reward of analysis?.rewards || []) {
-          rewardRows.push(normalizedReward(address, reward));
+          rewardRows.push(normalizedReward(address, reward, tx?.slot ?? null));
           if (reward?.quoteMint) relevantTransferMints.add(reward.quoteMint);
         }
 
         for (const transfer of analysis?.transfers || []) {
           if (transfer?.direction !== "IN" && transfer?.direction !== "OUT") continue;
           if (shouldPersistTransfer(transfer, relevantTransferMints, mode)) {
-            transferRows.push(normalizedTransfer(address, transfer));
+            transferRows.push(normalizedTransfer(address, transfer, tx?.slot ?? null));
           } else {
             transfersSkipped++;
           }
@@ -484,14 +489,17 @@ export async function syncWalletHistory(address, options = {}) {
         }
       }
 
-      await replaceWalletEventsForSignatures(address, reparsedSignatures);
-      await Promise.all([
-        upsertTransactions(txRows),
-        upsertTrades(tradeRows),
-        upsertTransfers(transferRows),
-        upsertRewards(rewardRows),
-        upsertFundingEvents(fundingRows)
-      ]);
+      const checkpointAt = new Date().toISOString();
+      const nextToken = result?.paginationToken || null;
+      const checkpoint = mode === "deep" && !stoppedOnExisting ? {
+        backfill_pagination_token: nextToken, backfill_started_at: startedAt,
+        backfill_updated_at: checkpointAt, transactions_scanned: baseWork + work + transactions.length,
+        pages_scanned: Number(previous?.pages_scanned || 0) + page, updated_at: checkpointAt
+      } : null;
+      await persistWalletEventPage(address, reparsedSignatures, {
+        transactions: txRows, trades: tradeRows, transfers: transferRows,
+        rewards: rewardRows, funding: fundingRows
+      }, checkpoint);
 
       total += txRows.length;
       work += transactions.length;
@@ -504,19 +512,6 @@ export async function syncWalletHistory(address, options = {}) {
 
       paginationToken = result?.paginationToken || null;
 
-      if (mode === "deep") {
-        const checkpointAt = new Date().toISOString();
-        await upsertSyncState({
-          wallet_address: address,
-          status: "syncing",
-          backfill_pagination_token: paginationToken,
-          backfill_started_at: startedAt,
-          backfill_updated_at: checkpointAt,
-          transactions_scanned: baseWork + work,
-          pages_scanned: Number(previous?.pages_scanned || 0) + page,
-          updated_at: checkpointAt
-        });
-      }
 
       if (!paginationToken) break;
     }

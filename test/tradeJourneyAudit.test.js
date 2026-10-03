@@ -16,6 +16,7 @@ const rows = [row('BUY',100,1,'a'),row('SELL',110,2,'b'),row('BUY',200,1,'c'),ro
 function service(trades=rows) {
   const source = read('../src/dataTradesService.js').replace(/^import .*;\n/gm,'').replace(/export /g,'');
   const context = vm.createContext({process:{env:{}}, buildTradeJourneys, assertWalletReadable:async()=>({action:"allow"}), excludedWallets:async()=>new Set(),
+    getWalletTransferPage:async()=>[], getWalletRewardsPage:async()=>[],
     getWalletTradePage:async (_wallet,limit,offset)=>trades.slice(offset,offset+limit),
     getPumpWalletProfile:async()=>null, getPumpTokenMetadata:async()=>null,
     getJupiterTokenMetadata:async()=>null, getTokenMetadata:async()=>null,

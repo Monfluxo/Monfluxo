@@ -1,3 +1,10 @@
+import { buildAccountingReview } from "./accountingReview.js";
+import { buildHoldBehavior } from "./holdIntelligence.js";
+import { buildWalletIntelligenceSummary } from "./intelligenceSummary.js";
+import { buildSmartWalletScore } from "./smartWalletScore.js";
+import { buildTradeJourneys } from "./tradeJourneyEngine.js";
+import { persistTradeJourneys } from "./dataTradesService.js";
+import { ANALYSIS_VERSION, analysisRevision } from "./analysisRevision.js";
 import { syncWalletHistory } from "./sync.js";
 import {
   getSyncState,
@@ -254,15 +261,18 @@ function eventOrder(a, b, indexField) {
 
 export async function analyzeWallet(address, options = {}) {
   const mode = options.mode || "quick";
-  const state = options.readOnly ? await getSyncState(address) : null;
+  let state = await getSyncState(address);
   const sync = options.readOnly
     ? {address,mode,historyComplete:state?.history_complete === true,pages:0,transactionsStored:0,readOnly:true}
     : await syncWalletHistory(address, { mode });
+  state = await getSyncState(address);
   const pageSize = 1000;
-  const maxRows = mode === "quick"
+  const maxRows = mode === "quick" && state?.history_complete !== true
     ? Number(process.env.MAX_QUICK_TRADE_ROWS || 5000)
     : Number(process.env.MAX_DEEP_TRADE_ROWS || 500000);
 
+  let rowsTruncated = false;
+  const readCounts = {trades:0,transfers:0,rewards:0};
   const trades = [];
   const transfers = [];
   const rewards = [];
@@ -270,7 +280,8 @@ export async function analyzeWallet(address, options = {}) {
   let lowConfidenceVolumeSolExcluded = 0;
 
   for (let offset = 0; offset < maxRows; offset += pageSize) {
-    const rows = await getWalletTradePage(address, pageSize, offset);
+    const rows = await getWalletTradePage(address, Math.min(pageSize, maxRows - offset), offset);
+    readCounts.trades += rows.length;
     if (!rows.length) break;
     for (const row of rows) {
       const trade = mapTrade(row);
@@ -283,20 +294,28 @@ export async function analyzeWallet(address, options = {}) {
     }
     if (rows.length < pageSize) break;
   }
+  if (readCounts.trades >= maxRows && (await getWalletTradePage(address, 1, maxRows)).length) rowsTruncated = true;
+
 
   for (let offset = 0; offset < maxRows; offset += pageSize) {
-    const rows = await getWalletTransferPage(address, pageSize, offset);
+    const rows = await getWalletTransferPage(address, Math.min(pageSize, maxRows - offset), offset);
+    readCounts.transfers += rows.length;
     if (!rows.length) break;
     transfers.push(...rows.map(mapTransfer));
     if (rows.length < pageSize) break;
   }
+  if (readCounts.transfers >= maxRows && (await getWalletTransferPage(address, 1, maxRows)).length) rowsTruncated = true;
+
 
   for (let offset = 0; offset < maxRows; offset += pageSize) {
-    const rows = await getWalletRewardsPage(address, pageSize, offset);
+    const rows = await getWalletRewardsPage(address, Math.min(pageSize, maxRows - offset), offset);
+    readCounts.rewards += rows.length;
     if (!rows.length) break;
     rewards.push(...rows.map(mapReward));
     if (rows.length < pageSize) break;
   }
+  if (readCounts.rewards >= maxRows && (await getWalletRewardsPage(address, 1, maxRows)).length) rowsTruncated = true;
+
 
   const fundingEvents = (await getWalletFundingPage(address, 100, 0)).map(mapFunding);
   trades.sort((a, b) => eventOrder(a, b, "eventIndex"));
@@ -313,6 +332,7 @@ export async function analyzeWallet(address, options = {}) {
   let grossBuyVolumeSol = 0;
   let grossSellVolumeSol = 0;
   let feesSol = 0;
+  const feeSignatures = new Set();
   const creatorRewardsByMint = {};
   let creatorRewardCount = 0;
   let creatorRewardTokenAmount = 0;
@@ -342,7 +362,10 @@ export async function analyzeWallet(address, options = {}) {
     tradeTypeCounts[trade.type] = (tradeTypeCounts[trade.type] || 0) + 1;
     if (trade.type === "BUY") grossBuyVolumeSol += trade.solAmount;
     if (trade.type === "SELL") grossSellVolumeSol += trade.solAmount;
-    feesSol += trade.feeSol || 0;
+    if (!trade.signature || !feeSignatures.has(trade.signature)) {
+      feesSol += trade.feeSol || 0;
+      if (trade.signature) feeSignatures.add(trade.signature);
+    }
     if (trade.dex) dexCounts[trade.dex] = (dexCounts[trade.dex] || 0) + 1;
   }
 
@@ -419,6 +442,10 @@ export async function analyzeWallet(address, options = {}) {
     wallet: address,
     mode,
     generatedAt: new Date().toISOString(),
+    analysisVersion: ANALYSIS_VERSION,
+    sourceRevision: analysisRevision(state),
+    rowsTruncated,
+    metricsComplete: state?.history_complete === true && !rowsTruncated,
     tradesAnalyzed: trades.length,
     realizedTradesAnalyzed: realizedTrades.length,
     realizedTokensAnalyzed: realizedTokenResults.length,
@@ -457,7 +484,7 @@ export async function analyzeWallet(address, options = {}) {
     realizedPnlSol: round(realizedPnl),
     unrealizedPnlSol: round(unrealizedPnl),
     totalPnlSol: round(totalPnl),
-    pnlComplete: incompletePnlPositions === 0,
+    pnlComplete: !rowsTruncated && incompletePnlPositions === 0,
     incompletePnlPositions,
     unknownCostSoldTokens: round(unknownCostSoldTokens),
     unknownCostSellProceedsSol: round(unknownCostSellProceedsSol),
@@ -482,10 +509,41 @@ export async function analyzeWallet(address, options = {}) {
     topPositions
   };
 
+  const historyComplete = state?.history_complete === true && !rowsTruncated;
+  const holdBehavior = buildHoldBehavior(positionList);
+  const journeys = buildTradeJourneys(trades, transfers, rewards).filter(j =>
+    j.closed && j.realizedCost >= MIN_RANKED_TRADE_COST_SOL && Number.isFinite(j.pnlPct));
+  const shapeJourney = j => ({
+    wallet: address, journeyId: j.id, tokenMint: j.tokenMint,
+    costSol: j.realizedCost, proceedsSol: j.realizedCost + j.realizedPnl,
+    pnlSol: j.realizedPnl, roiPct: j.pnlPct, holdSeconds: j.holdSeconds, hold: j.hold,
+    entryTime: j.entryTime, exitTime: j.exitTime,
+    tokenImage: `/api/token-image/${encodeURIComponent(j.tokenMint)}`,
+    detailUrl: `/data/trade/${encodeURIComponent(address)}/${encodeURIComponent(j.tokenMint)}?journey=${encodeURIComponent(j.id)}`
+  });
+  metrics.intelligenceSnapshot = {
+    positions: positionList.filter(p => p.tokensRemaining > POSITION_EPSILON).map(p => ({
+      mint: p.mint, tokensRemaining: p.tokensRemaining,
+      purchasedTokensRemaining: p.purchasedTokensRemaining, remainingCostSol: p.remainingCostSol
+    })),
+    accountingReview: buildAccountingReview(positionList, {historyComplete, truncated: rowsTruncated}),
+    holdBehavior: {...holdBehavior, status: historyComplete ? "ready" : "provisional"},
+    intelligence: {...buildWalletIntelligenceSummary(positionList, holdBehavior, {historyComplete}),
+      smartScore: buildSmartWalletScore(journeys, {historyComplete})},
+    journeys: {
+      best: journeys.filter(j=>j.realizedPnl>0).sort((a,b)=>b.realizedPnl-a.realizedPnl).slice(0,6).map(shapeJourney),
+      worst: journeys.filter(j=>j.realizedPnl<0).sort((a,b)=>a.realizedPnl-b.realizedPnl).slice(0,6).map(shapeJourney),
+      count: journeys.length
+    }
+  };
+  // Derived rankings are replaced only for a fully reconstructed source revision.
+  if (historyComplete) await persistTradeJourneys(address, journeys);
+
   await upsertAnalysisCache({
     wallet_address: address,
     analysis_scope: mode,
     metrics,
+    source_last_synced_at: state?.last_synced_at || null,
     generated_at: metrics.generatedAt
   });
 

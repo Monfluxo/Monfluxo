@@ -1,8 +1,9 @@
+import { createResultCache } from "./resultCache.js";
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 const CACHE_MS = Number(process.env.PORTFOLIO_CACHE_MS || 30_000);
 const MIN_OPEN_POSITION_VALUE_SOL = Number(process.env.MIN_OPEN_POSITION_VALUE_SOL || 0.005);
-const cache = new Map();
+const cache = createResultCache({ttlMs: CACHE_MS, maxEntries: 100});
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
@@ -62,8 +63,10 @@ function normalizeHolding(asset) {
 }
 
 export async function getWalletPortfolioSnapshot(address) {
-  const hit = cache.get(address);
-  if (hit && Date.now() - hit.createdAt < CACHE_MS) return hit.value;
+  return cache.get(address, () => loadWalletPortfolioSnapshot(address));
+}
+
+async function loadWalletPortfolioSnapshot(address) {
 
   const assetsResult = await rpc("getAssetsByOwner", {
     ownerAddress: address,
@@ -100,7 +103,6 @@ export async function getWalletPortfolioSnapshot(address) {
     holdings,
     topHoldings: [...pricedHoldings].sort((a, b) => b.valueUsd - a.valueUsd).slice(0, 6)
   };
-  cache.set(address, { createdAt: Date.now(), value: result });
   return result;
 }
 
@@ -188,3 +190,4 @@ export function applyPortfolioPricesToDashboard(dashboard, portfolio) {
   };
   return dashboard;
 }
+

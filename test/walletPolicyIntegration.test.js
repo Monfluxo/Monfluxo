@@ -15,6 +15,7 @@ function syncHarness({size=5000000,initial=null,policy={transaction_limit:5000},
     upsertSyncState:async patch=>{state={...state,...patch}},
     getTransactionsForAddress:async(_wallet,cursor,options)=>{calls++;const offset=Number(cursor||0),count=Math.min(options.limit,size-offset);return {data:Array.from({length:Math.max(0,count)},(_,i)=>({signature:`s${offset+i}`,blockTime:2000000000-offset-i})),paginationToken:offset+count<size?String(offset+count):null}},
     parseTransaction:()=>({trades:[],transfers:[],rewards:[]}),parseNativeSolFunding:()=>[],replaceWalletEventsForSignatures:noop,
+    persistWalletEventPage:async(_wallet,_signatures,_data,checkpoint)=>{if(++writes===failWriteAt)throw new Error("write_failed");if(checkpoint)state={...state,...checkpoint}},
     upsertTransactions:async()=>{if(++writes===failWriteAt)throw new Error('write_failed')},upsertTrades:noop,upsertTransfers:noop,upsertRewards:noop,upsertFundingEvents:noop
   });
   const sync=vm.runInContext(source+'\nsyncWalletHistory',context);

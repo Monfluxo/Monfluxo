@@ -9,7 +9,7 @@ function nullableNumber(value) {
 function confidenceFromMetrics(metrics, coverage) {
   const unmatchedSol = n(metrics?.unmatchedSellProceedsSol);
   const lowConfidenceExcluded = n(metrics?.lowConfidenceTradesExcluded);
-  const historyComplete = coverage?.historyComplete === true;
+  const historyComplete = coverage?.historyComplete === true && metrics?.rowsTruncated !== true;
 
   if (!historyComplete) {
     return {
@@ -156,7 +156,7 @@ function normalizeRewardEvent(event) {
 export function buildWalletDashboardResponse(productResult) {
   const metrics = productResult?.metrics || {};
   const coverage = productResult?.coverage || {};
-  const historyComplete = coverage.historyComplete === true;
+  const historyComplete = coverage.historyComplete === true && metrics.rowsTruncated !== true;
   const topPositions = Array.isArray(metrics.topPositions)
     ? metrics.topPositions.map((position) => normalizePosition(position, historyComplete)).filter(Boolean)
     : [];
