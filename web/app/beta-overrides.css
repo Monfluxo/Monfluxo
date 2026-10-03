@@ -1,0 +1,14 @@
+/* Beta presentation overrides.
+   Current positions are the single canonical open-position table. */
+.trade-grid + .panel { display: none; }
+
+/* Wallets without a resolved Pump.fun profile image use the generic Pump.fun avatar. */
+.wallet-identity:not(:has(img))::before {
+  content: "";
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 50%;
+  background: url('/pumpfun-wallet-fallback.svg') center / cover no-repeat;
+  overflow: hidden;
+}
