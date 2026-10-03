@@ -7,35 +7,18 @@ function fallbackSvg(mint) {
 
 export async function GET(_request, { params }) {
   const { mint } = await params;
-
   try {
     const response = await fetch(`${BACKEND_BASE}/api/token-image/${encodeURIComponent(mint)}`, {
-      cache: "force-cache",
-      signal: AbortSignal.timeout(10000)
+      cache: "no-store",
+      signal: AbortSignal.timeout(20000)
     });
-
     if (response.ok) {
       const bytes = await response.arrayBuffer();
       const type = response.headers.get("content-type") || "image/jpeg";
-      if (type.startsWith("image/")) {
-        return new Response(bytes, {
-          status: 200,
-          headers: {
-            "Content-Type": type,
-            "Cache-Control": "public, max-age=21600, stale-while-revalidate=172800"
-          }
-        });
-      }
+      if (type.startsWith("image/")) return new Response(bytes,{status:200,headers:{"Content-Type":type,"Cache-Control":"public, max-age=21600, stale-while-revalidate=172800"}});
     }
   } catch (error) {
     console.warn("Token image proxy fallback:", mint, error?.message || error);
   }
-
-  return new Response(fallbackSvg(mint), {
-    status: 200,
-    headers: {
-      "Content-Type": "image/svg+xml; charset=utf-8",
-      "Cache-Control": "public, max-age=1800, stale-while-revalidate=86400"
-    }
-  });
+  return new Response(fallbackSvg(mint),{status:200,headers:{"Content-Type":"image/svg+xml; charset=utf-8","Cache-Control":"no-store, max-age=0"}});
 }
