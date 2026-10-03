@@ -39,3 +39,7 @@ test('bounded activity wallet can queue new history but only while budget remain
  const h=productHarness({state:{history_complete:false,transactions_scanned:100},policy:{...auto,action:'allow'},cached:{metrics:{tradesAnalyzed:1}}});
  const r=await h.request();assert.equal(r.status,'indexing');assert.equal(h.calls.queued,1);assert.equal(r.analysisPolicy.transactionLimit,5000);
 });
+
+test('existing incomplete wallet refreshes metrics from storage without foreground history download',async()=>{
+ const h=productHarness({state:{history_complete:false,transactions_scanned:100}});await h.request();assert.equal(h.calls.analysis[0].readOnly,true);assert.equal(h.calls.queued,1);
+});

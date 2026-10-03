@@ -1,26 +1,26 @@
 "use client";
 
 function fmt(value, digits = 2) {
-  const n = Number(value);
+  const n = value == null ? NaN : Number(value);
   if (!Number.isFinite(n)) return "—";
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(n);
 }
 
 function usd(value) {
-  const n = Number(value);
+  const n = value == null ? NaN : Number(value);
   if (!Number.isFinite(n)) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: n < 10 ? 2 : 0 }).format(n);
 }
 
 function sol(value, digits = 3) {
-  const n = Number(value);
+  const n = value == null ? NaN : Number(value);
   if (!Number.isFinite(n)) return "—";
   return `${fmt(n, digits)} SOL`;
 }
 
 export default function PortfolioSummary({ portfolio }) {
   if (!portfolio || portfolio.status !== "ready") return null;
-  const unrealized = Number(portfolio.openPositionsUnrealizedPnlSol);
+  const unrealized = portfolio.openPositionsUnrealizedPnlSol == null ? NaN : Number(portfolio.openPositionsUnrealizedPnlSol);
   const unpriced = Number(portfolio.unpricedTokenCount || 0);
   return <section className="portfolio-summary" aria-label="Current wallet portfolio">
     <div className="portfolio-kpi portfolio-kpi-primary">
@@ -41,7 +41,8 @@ export default function PortfolioSummary({ portfolio }) {
     <div className={`portfolio-kpi ${Number.isFinite(unrealized) ? (unrealized >= 0 ? "portfolio-positive" : "portfolio-negative") : ""}`}>
       <span>Open unrealized PnL</span>
       <strong>{Number.isFinite(unrealized) ? sol(unrealized,4) : "—"}</strong>
-      <small>{portfolio.openPositionsUnrealizedPnlUsd == null ? "Current-price estimate" : `${usd(portfolio.openPositionsUnrealizedPnlUsd)} at current prices`}</small>
+      <small>{portfolio.openPositionsUnrealizedPnlUsd == null ? "Cost basis or pricing unavailable" : `${usd(portfolio.openPositionsUnrealizedPnlUsd)} at current prices`}</small>
     </div>
   </section>;
 }
+

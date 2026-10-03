@@ -1,3 +1,4 @@
+import { assertWalletReadable } from "../src/walletPolicy.js";
 import { analyzeWallet } from "../src/walletAnalyzer.js";
 const BASE = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -10,6 +11,7 @@ const states = await response.json();
 let failures = 0;
 for (const {wallet_address: wallet} of states) {
   try {
+    await assertWalletReadable(wallet);
     const {metrics} = await analyzeWallet(wallet, {mode:"deep", readOnly:true});
     console.log(JSON.stringify({wallet, trades:metrics.tradesAnalyzed, journeys:metrics.intelligenceSnapshot.journeys.count, complete:metrics.metricsComplete}));
   } catch (error) {

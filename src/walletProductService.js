@@ -30,7 +30,7 @@ async function loadMetricsForRequest(address,stateBefore,policy){
     if(!stateBefore){const error=policyError(policy);throw error}
     return sanitizeMetrics((await analyzeWallet(address,{mode:"quick",readOnly:true})).metrics);
   }
-  if(stateBefore?.history_complete===true || (stateBefore && !transactionAllowance(stateBefore,policy)))
+  if(stateBefore)
     return sanitizeMetrics((await analyzeWallet(address,{mode:"quick",readOnly:true})).metrics);
   try{return sanitizeMetrics((await analyzeWallet(address,{mode:"quick"})).metrics)}catch(error){
     if(!String(error?.message||"").includes("already in progress"))throw error;

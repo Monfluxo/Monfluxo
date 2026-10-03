@@ -21,3 +21,10 @@ test('live balance mismatch is explicit rather than silently scaling cost',()=>{
  const d=dashboard();attachLivePositionAccounting(d,[{mint:'Mint',tokensRemaining:20,purchasedTokensRemaining:20,remainingCostSol:.1}]);
  assert.equal(d.livePortfolio.positions[0].accountingStatus,'balance_mismatch');assert.equal(d.livePortfolio.positions[0].unrealizedPnlSol,null);
 });
+
+test('portfolio total remains unknown when holding accounting is unknown',()=>{
+ const d=dashboard();attachLivePositionAccounting(d,[]);assert.equal(d.portfolio.openPositionsUnrealizedPnlSol,null);assert.equal(d.portfolio.openPositionsPnlComplete,false);
+});
+test('portfolio total includes known holdings beyond the historical top-six sample',()=>{
+ const d=dashboard();d.livePortfolio.count=1;attachLivePositionAccounting(d,[{mint:'Mint',tokensRemaining:10,purchasedTokensRemaining:10,remainingCostSol:.1}]);assert.equal(d.portfolio.openPositionsUnrealizedPnlSol,.1);assert.equal(d.portfolio.openPositionsPnlComplete,true);
+});

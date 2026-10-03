@@ -18,5 +18,14 @@ export function attachLivePositionAccounting(dashboard, positions) {
     holding.unrealizedPnlSol=pnl;holding.unrealizedPnlUsd=pnl*solPrice;
     holding.unrealizedRoiPct=cost>0?pnl/cost*100:null;
   }
+  if(dashboard.portfolio) {
+    const holdings=dashboard.livePortfolio?.positions||[];
+    const priced=holdings.filter(p=>Number.isFinite(p.unrealizedPnlSol));
+    const total=priced.length?priced.reduce((sum,p)=>sum+p.unrealizedPnlSol,0):holdings.length?null:0;
+    dashboard.portfolio.openPositionsUnrealizedPnlSol=total;
+    dashboard.portfolio.openPositionsUnrealizedPnlUsd=total!=null&&solPrice>0?total*solPrice:null;
+    dashboard.portfolio.openPositionsPnlScope="displayed_known_cost_holdings";
+    dashboard.portfolio.openPositionsPnlComplete=Number(dashboard.livePortfolio?.count||0)<=holdings.length&&holdings.every(p=>["matched","mixed_inventory"].includes(p.accountingStatus)&&Number.isFinite(p.unrealizedPnlSol));
+  }
   return dashboard;
 }
