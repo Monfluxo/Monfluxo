@@ -1,3 +1,5 @@
+import { assertWalletAllowed, claimWalletSyncLease } from "./walletPolicy.js";
+import { transactionAllowance, indexedWork } from "./analysisBudget.js";
 import { getTransactionsForAddress } from "./helius.js";
 import { parseTransaction } from "./parserV2.js";
 import { parseNativeSolFunding } from "./fundingParser.js";
@@ -267,6 +269,7 @@ async function enrichFromTokenAccounts({
           tokenAccounts: "none"
         });
         const transactions = result?.data || [];
+      if (!Array.isArray(transactions) || transactions.length > requestedLimit) throw new Error("history_page_exceeds_budget");
         if (!transactions.length) break;
 
         const txRows = [];
@@ -327,9 +330,12 @@ export async function syncWalletHistory(address, options = {}) {
     storeRaw = process.env.STORE_RAW_TRANSACTIONS !== "false"
   } = options;
 
+  const policy = await assertWalletAllowed(address);
   await assertEventModelV2Schema();
 
-  const previous = await getSyncState(address);
+  let previous = await getSyncState(address);
+  let allowance = transactionAllowance(previous, policy);
+  if (!allowance) return { address, mode, pages: 0, transactionsStored: 0, historyComplete: false, budgetExhausted: true, backfillCursorSaved: Boolean(previous?.backfill_pagination_token), status: "paused" };
   if (previous?.status === "syncing") {
     throw new Error("Wallet sync already in progress");
   }
@@ -339,6 +345,13 @@ export async function syncWalletHistory(address, options = {}) {
     updated_at: new Date().toISOString()
   });
 
+  if (!await claimWalletSyncLease(address)) throw new Error("Wallet sync already in progress");
+  previous = await getSyncState(address);
+  allowance = transactionAllowance(previous, policy);
+  if (!allowance) {
+    await upsertSyncState({wallet_address:address,status:"idle",updated_at:new Date().toISOString()});
+    return {address,mode,pages:0,transactionsStored:0,historyComplete:false,budgetExhausted:true,status:"paused"};
+  }
   const tokenAccountsFilter = process.env.HELIUS_TOKEN_ACCOUNTS_FILTER || "balanceChanged";
   const unifiedTokenHistory = tokenAccountsFilter !== "none";
   const legacyTokenAccountFallback =
@@ -366,12 +379,15 @@ export async function syncWalletHistory(address, options = {}) {
     : null;
   let page = 0;
   let total = 0;
+  let work = 0;
   let tradesStored = 0;
   let transfersStored = 0;
   let transfersSkipped = 0;
   let rewardsStored = 0;
   let fundingStored = 0;
   let stoppedOnExisting = false;
+  let budgetExhausted = false;
+  const baseWork = indexedWork(previous);
   let newest = null;
   let oldest = null;
   const inventory = new Map();
@@ -380,13 +396,18 @@ export async function syncWalletHistory(address, options = {}) {
   const relevantTransferMints = new Set(STABLE_MINTS);
 
   try {
-    while (page < maxPages) {
+    while (page < maxPages && work < allowance) {
+      const currentPolicy = await assertWalletAllowed(address);
+      if (currentPolicy.transaction_limit < policy.transaction_limit && work >= transactionAllowance(previous, currentPolicy)) { budgetExhausted = true; break; }
       page++;
 
+      const requestedLimit = Math.min(100, Math.min(allowance,transactionAllowance(previous,currentPolicy))-work);
       const result = await getTransactionsForAddress(address, paginationToken, {
-        tokenAccounts: tokenAccountsFilter
+        tokenAccounts: tokenAccountsFilter,
+        limit: requestedLimit
       });
       const transactions = result?.data || [];
+      if (!Array.isArray(transactions) || transactions.length > requestedLimit) throw new Error("history_page_exceeds_budget");
       if (!transactions.length) {
         paginationToken = null;
         break;
@@ -473,6 +494,7 @@ export async function syncWalletHistory(address, options = {}) {
       ]);
 
       total += txRows.length;
+      work += transactions.length;
       tradesStored += tradeRows.length;
       transfersStored += transferRows.length;
       rewardsStored += rewardRows.length;
@@ -490,6 +512,8 @@ export async function syncWalletHistory(address, options = {}) {
           backfill_pagination_token: paginationToken,
           backfill_started_at: startedAt,
           backfill_updated_at: checkpointAt,
+          transactions_scanned: baseWork + work,
+          pages_scanned: Number(previous?.pages_scanned || 0) + page,
           updated_at: checkpointAt
         });
       }
@@ -497,20 +521,14 @@ export async function syncWalletHistory(address, options = {}) {
       if (!paginationToken) break;
     }
 
+    budgetExhausted = budgetExhausted || (work >= allowance && Boolean(paginationToken) && !stoppedOnExisting);
     let tokenAccountEnrichment = null;
-    if (mode === "deep" && legacyTokenAccountFallback) {
-      tokenAccountEnrichment = await enrichFromTokenAccounts({
-        address,
-        tokenAccountsByMint,
-        inventory,
-        primarySignatures,
-        storeRaw
-      });
-    } else if (mode === "deep") {
+    if (mode === "deep") {
       tokenAccountEnrichment = {
         mode: "unified_gTFA",
         tokenAccountsFilter,
-        legacyScanSkipped: true
+        legacyScanSkipped: true,
+        supplementaryScanDisabledByBudget: legacyTokenAccountFallback
       };
     }
 
@@ -520,12 +538,13 @@ export async function syncWalletHistory(address, options = {}) {
     const historyComplete =
       mode === "deep"
         ? !paginationToken && !stoppedOnExisting
-        : previous?.history_complete === true;
+        : previous?.history_complete === true && (stoppedOnExisting || !paginationToken);
 
     const syncState = {
       wallet_address: address,
       status: "idle",
-      pages_scanned: (previous?.pages_scanned || 0) + page,
+      pages_scanned: Number(previous?.pages_scanned || 0) + page,
+      transactions_scanned: baseWork + work,
       last_synced_at: now,
       updated_at: now
     };
@@ -553,7 +572,11 @@ export async function syncWalletHistory(address, options = {}) {
       syncState.backfill_started_at = startedAt;
       syncState.backfill_updated_at = now;
     } else if (previous?.history_complete === true) {
-      syncState.history_complete = true;
+      syncState.history_complete = historyComplete;
+      if (!historyComplete) {
+        syncState.backfill_pagination_token = paginationToken;
+        syncState.backfill_updated_at = now;
+      }
     }
 
     await upsertSyncState(syncState);
@@ -575,6 +598,7 @@ export async function syncWalletHistory(address, options = {}) {
       tokenAccountsFilter,
       resumingBackfill,
       historyComplete,
+      budgetExhausted,
       backfillCursorSaved: mode === "deep" && !historyComplete && Boolean(paginationToken),
       status: "idle"
     };
@@ -592,3 +616,4 @@ export async function syncWalletHistory(address, options = {}) {
     throw error;
   }
 }
+
