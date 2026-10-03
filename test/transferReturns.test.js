@@ -7,7 +7,7 @@ test('20 tokens cost 2 SOL, leave, return and sell for 10 SOL: both engines repo
  const trades=[trade('BUY',20,2,1),trade('SELL',20,10,4)],transfers=[transfer('OUT',20,2),transfer('IN',20,3)];
  const p=buildPositions(trades,transfers).get(mint),j=buildTradeJourneys(trades,transfers)[0];
  assert.equal(p.realizedPnl,8);assert.equal(p.realizedCostBasis,2);assert.equal(p.transferredOutKnownCostSol,0);assert.equal(p.unknownCostSellProceedsSol || 0,0);
- assert.equal(j.realizedPnl,8);assert.equal(j.realizedCost,2);assert.equal(j.closed,true);assert.equal(j.events.length,4);
+ assert.equal(j.realizedPnl,8);assert.equal(j.realizedCost,2);assert.equal(j.closed,true);assert.equal(j.events.length,4);assert.equal(j.events[1].type,"TRANSFER_OUT");assert.equal(j.events[2].type,"TRANSFER_IN");assert.equal(j.events[2].amount,20);
 });
 test('partial returns restore proportionate basis once and do not realize profit before a sale',()=>{
  const trades=[trade('BUY',20,2,1),trade('SELL',5,5,4),trade('SELL',15,15,6)];const transfers=[transfer('OUT',20,2),transfer('IN',5,3),transfer('IN',15,5)];

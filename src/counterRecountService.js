@@ -41,7 +41,8 @@ export async function processCounterRecountSlice(maxPages=50) {
    if(signatures[0]===lastSignature)signatures.shift();
    count+=signatures.length;pages++;cursor=next;
    lastSignature=signatures.at(-1)||lastSignature;
-   if(!cursor || !signatures.length) {
+   if(!cursor || !result.data.length) {
+    if(count===0)throw Error("empty_indexed_counter_recount");
     await save({transactions_counted:count,pages_counted:pages,pagination_token:cursor,last_signature:lastSignature});
     const complete=await rest('rpc/finish_wallet_counter_recount',{method:'POST',body:JSON.stringify({p_wallet:wallet,p_lease:job.lease_token,p_total:count})});
     console.log(JSON.stringify({event:'wallet_counter_recount',wallet,count,pages,complete}));return true;
