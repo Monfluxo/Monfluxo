@@ -1,0 +1,9 @@
+# Data counter and Mitch ranking audit
+
+44,294 is the sum of four explicit transaction counters: 32,000 + 5,000 + 5,000 + 2,294. There are 32 eligible indexed histories, of which 28 have no transaction total. Legacy wallets.transaction_count values are zero and do not recover missing totals. RPC page totals cannot be converted into exact transaction totals; pages can be partial, repeated and use different sizes. Economic-only retained rows are not all scanned transactions. The UI now explains missing totals rather than calling them Legacy counter. No counters or transaction facts were fabricated or deleted.
+
+Mitch address: 4Be9CvxqHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7t. The strongest candidate for the recalled ~1,794 SOL trade is mint 4YK1njyeCkBuXG6phNtidJWKCbBhB659iwGkUJx98P5Z: raw sale proceeds 1,895.722376046 SOL, purchases 100.00203928 SOL, simple difference 1,795.720336766 SOL. This alone is not verified FIFO profit.
+
+Bought 648,128.170104 tokens on October 3, 2024. Transferred OUT 648,128 on October 8 (3SkjZLRgeBrLnXjwU7W79j6BsKiHGMSsQrkXRveFJkCmh7gNFmQhEZXbNrWio6QN1w93MfoE3o651W6GCtxUSqh2). Received IN 648,128 on October 9 (4HmxsYuxukqB24vDLcqqzMuBB2AZnk9wXJSSGHfFPLrq8cMkPqReWAy5PS9nxEn3YveD9zoDTmbQg2pfcriGYCnb). Sold later October 13–18. Transfer records have no source/destination addresses, so common ownership and cost continuity cannot be proven from retained facts. Current accounting consumes purchased lots on OUT and treats subsequent IN as unknown cost. Current journey rankings require closed purchased-inventory lifecycles and therefore exclude the transferred-out cycle. This is not evidence of deleted sales.
+
+Next reconciliation requires fetching those two original transactions and resolving token-account ownership/counterparties. Preserve cost only for proven same-owner internal moves or a supported traced return; equal quantity is insufficient. Regression test prevents inventing profit from an unproven round trip.
