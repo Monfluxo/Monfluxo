@@ -8,7 +8,7 @@ function syncHarness({size=5000000,initial=null,policy={transaction_limit:5000},
   let state=initial?{...initial}:null,calls=0,writes=0,policyCalls=0;
   const source=readFileSync(new URL('../src/sync.js',import.meta.url),'utf8').replace(/^import[\s\S]*?;\n/gm,'').replace(/export /g,'');
   const noop=async()=>{};
-  const context=vm.createContext({process:{env:{}},console,transactionAllowance,indexedWork,
+  const context=vm.createContext({process:{env:{},cpuUsage:process.cpuUsage,memoryUsage:process.memoryUsage},Buffer,console:{...console,log:()=>{}},transactionAllowance,indexedWork,
     assertWalletAllowed:async()=>{if(++policyCalls>=blockAt){const e=new Error('Blocked');e.code='wallet_blocked';throw e}return policy},
     claimWalletSyncLease:async()=>{if(state?.status==='syncing')return false;state={...state,status:'syncing'};return true},
     assertEventModelV2Schema:noop,upsertWallet:noop,getSyncState:async()=>state?{...state}:null,

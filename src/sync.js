@@ -272,9 +272,7 @@ async function enrichFromTokenAccounts({
         const result = await getTransactionsForAddress(account, paginationToken, {
           tokenAccounts: "none"
         });
-        const historyMs = Date.now() - pageStarted;
-      const historyBytes = Buffer.byteLength(JSON.stringify(result));
-      const transactions = result?.data || [];
+        const transactions = result?.data || [];
       if (!Array.isArray(transactions) || transactions.length > requestedLimit) throw new Error("history_page_exceeds_budget");
         if (!transactions.length) break;
 
@@ -414,6 +412,8 @@ export async function syncWalletHistory(address, options = {}) {
         tokenAccounts: tokenAccountsFilter,
         limit: requestedLimit
       });
+      const historyMs = Date.now() - pageStarted;
+      const historyBytes = Buffer.byteLength(JSON.stringify(result));
       const transactions = result?.data || [];
       if (!Array.isArray(transactions) || transactions.length > requestedLimit) throw new Error("history_page_exceeds_budget");
       if (!transactions.length) {
