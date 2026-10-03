@@ -272,7 +272,9 @@ async function enrichFromTokenAccounts({
         const result = await getTransactionsForAddress(account, paginationToken, {
           tokenAccounts: "none"
         });
-        const transactions = result?.data || [];
+        const historyMs = Date.now() - pageStarted;
+      const historyBytes = Buffer.byteLength(JSON.stringify(result));
+      const transactions = result?.data || [];
       if (!Array.isArray(transactions) || transactions.length > requestedLimit) throw new Error("history_page_exceeds_budget");
         if (!transactions.length) break;
 
@@ -407,6 +409,7 @@ export async function syncWalletHistory(address, options = {}) {
 
       const pageLimit = Math.min(1000, Math.max(1, Number(process.env.HELIUS_FULL_PAGE_LIMIT || 100)));
       const requestedLimit = Math.min(pageLimit, Math.min(allowance,transactionAllowance(previous,currentPolicy))-work);
+      const pageStarted = Date.now(), pageCpu = process.cpuUsage();
       const result = await getTransactionsForAddress(address, paginationToken, {
         tokenAccounts: tokenAccountsFilter,
         limit: requestedLimit
@@ -496,11 +499,14 @@ export async function syncWalletHistory(address, options = {}) {
         backfill_updated_at: checkpointAt, transactions_scanned: baseWork + work + transactions.length,
         pages_scanned: Number(previous?.pages_scanned || 0) + page, updated_at: checkpointAt
       } : null;
+      const persistStarted = Date.now();
       await persistWalletEventPage(address, reparsedSignatures, {
         transactions: txRows, trades: tradeRows, transfers: transferRows,
         rewards: rewardRows, funding: fundingRows
       }, checkpoint);
 
+      const cpu = process.cpuUsage(pageCpu);
+      console.log(JSON.stringify({event:"wallet_history_page",wallet:address,from:baseWork+work+1,to:baseWork+work+transactions.length,transactions:transactions.length,historyMs,persistMs:Date.now()-persistStarted,totalMs:Date.now()-pageStarted,cpuMs:(cpu.user+cpu.system)/1000,heapBytes:process.memoryUsage().heapUsed,rssBytes:process.memoryUsage().rss,historyJsonBytes:historyBytes,estimatedHistoryCredits:Math.max(10,Math.ceil(transactions.length/100)*10)}));
       total += txRows.length;
       work += transactions.length;
       tradesStored += tradeRows.length;
