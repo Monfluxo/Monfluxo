@@ -1,0 +1,271 @@
+{
+  "wallets": [
+    {
+      "wallet_address": "BAr5csYtpWoNpwhUjixX7ZPHXkUciFZzjBp9uNxZXJPh",
+      "transactions_scanned": 591568,
+      "pages_scanned": 2705,
+      "history_complete": false,
+      "transaction_count": 591568,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "5B52w1ZW9tuwUduueP5J7HXz5AcGfruGoX6YoAudvyxG",
+      "transactions_scanned": 441201,
+      "pages_scanned": 4198,
+      "history_complete": false,
+      "transaction_count": 441201,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "2heJbC32Tpfcb3nbUb5ER61K11FGZVfVGtVnDm6LDogF",
+      "transactions_scanned": 344152,
+      "pages_scanned": 3013,
+      "history_complete": false,
+      "transaction_count": 344152,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "4Be9CvxqHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7t",
+      "transactions_scanned": 209354,
+      "pages_scanned": 2638,
+      "history_complete": true,
+      "transaction_count": 209354,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "J23qr98GjGJJqKq9CBEnyRhHbmkaVxtTJNNxKu597wsA",
+      "transactions_scanned": 109347,
+      "pages_scanned": 2166,
+      "history_complete": true,
+      "transaction_count": 109347,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "5YRgrP3mjGzrzirYYN5HAQH19cTYREYwGxW6XRJQUzij",
+      "transactions_scanned": 75230,
+      "pages_scanned": 1914,
+      "history_complete": true,
+      "transaction_count": 75230,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "66Mccg5AzxRsMZHFXKERXheBBwxs3S7MzFgnbqCYoxtH",
+      "transactions_scanned": 50597,
+      "pages_scanned": 516,
+      "history_complete": true,
+      "transaction_count": 50597,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "4suNYdgLYL1CfP6sdsVe8zJEQ9ZBiPcZtFrKzNiWRWS1",
+      "transactions_scanned": 47618,
+      "pages_scanned": 416,
+      "history_complete": true,
+      "transaction_count": 47618,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "CHXHjEdbzDxqzXzsh9Vs1jxMixnBSAJuqQ9bjZMzFqn9",
+      "transactions_scanned": 39392,
+      "pages_scanned": 402,
+      "history_complete": true,
+      "transaction_count": 39392,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "Be24Gbf5KisDk1LcWWZsBn8dvB816By7YzYF5zWZnRR6",
+      "transactions_scanned": 33534,
+      "pages_scanned": 725,
+      "history_complete": true,
+      "transaction_count": 33534,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "4ugDhHJ8XDXAeABmrNmGffFaLbJb9BkPyiFGVSV9ocwo",
+      "transactions_scanned": 33400,
+      "pages_scanned": 305,
+      "history_complete": false,
+      "transaction_count": 33400,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "At9Lxx6MgJxGzj33RHn57LaSkC7incZ6XpaN3BiMC2k",
+      "transactions_scanned": 33288,
+      "pages_scanned": 276,
+      "history_complete": true,
+      "transaction_count": 33288,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "8MaVa9kdt3NW4Q5HyNAm1X5LbR8PQRVDc1W8NMVK88D5",
+      "transactions_scanned": 32000,
+      "pages_scanned": 140,
+      "history_complete": false,
+      "transaction_count": 32000,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "49fAsUF3Nk8qbfpSrQND2sULKXanemwibYLGk5Jpn9bY",
+      "transactions_scanned": 21726,
+      "pages_scanned": 229,
+      "history_complete": true,
+      "transaction_count": 21726,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "DpoZfMLUrrjG9EiJLnXpVe8yfpjBg5NjqAnup6Lx9uhu",
+      "transactions_scanned": 10947,
+      "pages_scanned": 121,
+      "history_complete": true,
+      "transaction_count": 10947,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "HeC1oS1rpsuDY145Lubr6JdTNGYsoW6Jxc176QpE1F3e",
+      "transactions_scanned": 9291,
+      "pages_scanned": 267,
+      "history_complete": true,
+      "transaction_count": 9291,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "CJAgoAjWVpBd7q8383kxyE6SsgwsJ9GeBXLvhLeQJXPx",
+      "transactions_scanned": 7318,
+      "pages_scanned": 104,
+      "history_complete": true,
+      "transaction_count": 7318,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "6DQAGJT7VZPVBsuG4kn3AvpyHCEi7B2RFFvMZdbqQqqP",
+      "transactions_scanned": 5085,
+      "pages_scanned": 63,
+      "history_complete": true,
+      "transaction_count": 5085,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "9fTTe4au17SxqPM1L3bhbn95CHDrPHvQbyXUvBxty2Sb",
+      "transactions_scanned": 5008,
+      "pages_scanned": 60,
+      "history_complete": true,
+      "transaction_count": 5008,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "Gx8UKb45Y4sFaRWw1u7UUmu718WzNPQHvzXXhWS2bvik",
+      "transactions_scanned": 4589,
+      "pages_scanned": 55,
+      "history_complete": true,
+      "transaction_count": 4589,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "CcJX975YTw8owyuRwyC1m9pyC3ZhRp89VM12pfUfDBcf",
+      "transactions_scanned": 4500,
+      "pages_scanned": 50,
+      "history_complete": false,
+      "transaction_count": 4500,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "9BMzTpSo4URse1oN666pmexhdjpU1vA5p7LtroCFQdLU",
+      "transactions_scanned": 4500,
+      "pages_scanned": 50,
+      "history_complete": false,
+      "transaction_count": 4500,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "sRktYczCXxPfjFyX9UH8KVAsowE5nMHigDx41S5rxXf",
+      "transactions_scanned": 4233,
+      "pages_scanned": 62,
+      "history_complete": true,
+      "transaction_count": 4233,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "CjfLyafnK76qJyfTnBF8wb2H15D3bnMVNbRESmByDtmX",
+      "transactions_scanned": 3050,
+      "pages_scanned": 78,
+      "history_complete": true,
+      "transaction_count": 3050,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "2ExjWr2AE9E4jb9k7N674HMCz8myvcQqVCBDhc6wthsp",
+      "transactions_scanned": 2249,
+      "pages_scanned": 32,
+      "history_complete": true,
+      "transaction_count": 2249,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "CvsLntmzegjaBBubzB348VXpGJaZSPc6Bd9tbuN27t3J",
+      "transactions_scanned": 1694,
+      "pages_scanned": 24,
+      "history_complete": true,
+      "transaction_count": 1694,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "4wivMu7ErrNGBrvD4bH5rxPkTjLaRH8dXqJ4p4GJrPGi",
+      "transactions_scanned": 1021,
+      "pages_scanned": 36,
+      "history_complete": true,
+      "transaction_count": 1021,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "J9CyGJztwPqEsUBGZ1fzWyP6Mo8r9P4KtAVioJNCBGZh",
+      "transactions_scanned": 675,
+      "pages_scanned": 15,
+      "history_complete": true,
+      "transaction_count": 675,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "AGdtsMmphhymH5wYW3dWKSkAxpLYRrNDCTFAfuq8ii9v",
+      "transactions_scanned": 567,
+      "pages_scanned": 5,
+      "history_complete": false,
+      "transaction_count": 567,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "BFr1JoJBBSb9db69Hq7X5Lyc4UuXa8qpDvFrWAfg4kQk",
+      "transactions_scanned": 68,
+      "pages_scanned": 6,
+      "history_complete": true,
+      "transaction_count": 68,
+      "transaction_count_exact": true
+    },
+    {
+      "wallet_address": "9XcrufRxyydCQ1Zp2Tw834qHyADocytUXnMCAfFPgBNr",
+      "transactions_scanned": 37,
+      "pages_scanned": 2,
+      "history_complete": false,
+      "transaction_count": 37,
+      "transaction_count_exact": true
+    }
+  ],
+  "recovery": [
+    {
+      "status": "complete",
+      "wallets": 31,
+      "transactions": 2127239,
+      "signature_pages": 2176
+    }
+  ],
+  "mirror_mismatches": 0,
+  "mitch": [
+    {
+      "token_mint": "4YK1njyeCkBuXG6phNtidJWKCbBhB659iwGkUJx98P5Z",
+      "pnl_sol": 1795.72014650706,
+      "cost_sol": 100.00203928,
+      "analysis_version": 4
+    }
+  ],
+  "date": "2026-10-03",
+  "totalTransactions": 2127239
+}
