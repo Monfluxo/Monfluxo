@@ -820,7 +820,9 @@ const outputDecimals = getMintDecimals(
   ) {
     const preLamports = BigInt(transaction.meta.preBalances[walletIndex]);
     const postLamports = BigInt(transaction.meta.postBalances[walletIndex]);
-    const feeLamports = BigInt(transaction.meta?.fee || 0);
+    // Only the first account pays the network fee. Adding a sponsor fee
+    // to an unchanged wallet balance fabricates sale proceeds.
+    const feeLamports = walletIndex === 0 ? BigInt(transaction.meta?.fee || 0) : 0n;
   
     const netChange = postLamports - preLamports;
   
@@ -845,7 +847,9 @@ const outputDecimals = getMintDecimals(
   ) {
     const preLamports = BigInt(transaction.meta.preBalances[walletIndex]);
     const postLamports = BigInt(transaction.meta.postBalances[walletIndex]);
-    const feeLamports = BigInt(transaction.meta?.fee || 0);
+    // Only the first account pays the network fee. Adding a sponsor fee
+    // to an unchanged wallet balance fabricates sale proceeds.
+    const feeLamports = walletIndex === 0 ? BigInt(transaction.meta?.fee || 0) : 0n;
 
     const netChange = postLamports - preLamports;
     const grossInput = -(netChange + feeLamports);
@@ -967,3 +971,4 @@ const outputDecimals = getMintDecimals(
 
   return null;
 }
+

@@ -1,5 +1,6 @@
 import { syncWalletHistory } from "./sync.js";
 import {
+  getSyncState,
   getWalletTradePage,
   getWalletTransferPage,
   getWalletRewardsPage,
@@ -253,7 +254,10 @@ function eventOrder(a, b, indexField) {
 
 export async function analyzeWallet(address, options = {}) {
   const mode = options.mode || "quick";
-  const sync = await syncWalletHistory(address, { mode });
+  const state = options.readOnly ? await getSyncState(address) : null;
+  const sync = options.readOnly
+    ? {address,mode,historyComplete:state?.history_complete === true,pages:0,transactionsStored:0,readOnly:true}
+    : await syncWalletHistory(address, { mode });
   const pageSize = 1000;
   const maxRows = mode === "quick"
     ? Number(process.env.MAX_QUICK_TRADE_ROWS || 5000)
@@ -510,3 +514,4 @@ if (process.argv[1]?.endsWith("walletAnalyzer.js")) {
     process.exit(1);
   }
 }
+

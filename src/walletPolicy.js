@@ -48,7 +48,10 @@ async function lookupIdentity(wallet) {
   } catch { return null; }
 }
 async function inspectPolicy(wallet) {
-  const stored = await getWalletPolicy(wallet);
+  let stored = await getWalletPolicy(wallet);
+  if (isAutomaticActivityReview(stored)) {
+    stored = await saveWalletPolicy(wallet, {...stored, action:'allow', reason:'High activity detected. Analysis remains bounded by the transaction limit.'});
+  }
   if (stored?.source === 'manual' || (stored?.checked_at && Date.now() - Date.parse(stored.checked_at) < 86400000)) return stored;
   const identity = await lookupIdentity(wallet);
   let action = classifyIdentity(identity), reason = identity ? `Known entity: ${identity.category || identity.type || 'wallet'}.` : 'Bounded analysis; wallet identity is unconfirmed.';
@@ -58,7 +61,7 @@ async function inspectPolicy(wallet) {
       const r = await fetch(`https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(4000), body: JSON.stringify({ jsonrpc: '2.0', id: 'wallet-preflight', method: 'getSignaturesForAddress', params: [wallet, { limit: 1000 }] }) });
       if (r.ok) { const p = await r.json(); activity = highActivitySample(p.result); }
     } catch {}
-    if (activity) { action = 'review'; reason = 'At least 1,000 recent signatures within 24 hours. Automatic analysis requires review; this is not a bot classification.'; }
+    if (activity) { reason = 'High activity detected: 1,000 recent signatures within 24 hours. Analysis remains bounded by the transaction limit.'; }
   }
   // Retain a previous institutional restriction if the provider temporarily fails.
   if (!identity && stored && stored.action !== 'allow') return stored;
@@ -69,18 +72,28 @@ export async function preflightWallet(wallet) {
   if (!pending.has(wallet)) pending.set(wallet, inspectPolicy(wallet).finally(() => pending.delete(wallet)));
   return pending.get(wallet);
 }
-export function policyError(policy) {
+export function isAutomaticActivityReview(policy) {
+  return policy?.source === 'helius_preflight' && policy.action === 'review' && policy.category === 'High activity';
+}
+export function policyError(policy, {readOnly = false} = {}) {
+  if (isAutomaticActivityReview(policy) || (readOnly && policy?.action === 'review')) return null;
   if (!['block', 'review'].includes(policy?.action)) return null;
   const error = new Error(policy.reason || 'Wallet analysis restricted.');
   error.code = policy.action === 'block' ? 'wallet_blocked' : 'wallet_review_required'; error.statusCode = 403;
   return error;
 }
 export async function assertWalletAllowed(wallet) { const policy = await preflightWallet(wallet); const error = policyError(policy); if (error) throw error; return policy; }
-export async function excludedWallets() {
-  const rows = await db('wallet_analysis_policies?select=wallet_address&action=in.(block,exclude,review)&limit=10000');
-  if (rows.length === 10000) throw new Error('wallet_policy_list_limit');
-  return new Set(rows.map(r => r.wallet_address));
+export async function assertWalletReadable(wallet) {
+  const policy = await preflightWallet(wallet);
+  const error = policyError(policy, {readOnly:true});
+  if (error) throw error;
+  return policy;
 }
-export function publicAnalysisPolicy(policy) { return { action: policy?.action || 'allow', category: policy?.category || 'Unknown', name: policy?.name || null, transactionLimit: policy?.transaction_limit || 5000, creditPlan: CREDIT_PLAN }; }
+export async function excludedWallets() {
+  const rows = await db('wallet_analysis_policies?select=wallet_address,action,source,category&action=in.(block,exclude,review)&limit=10000');
+  if (rows.length === 10000) throw new Error('wallet_policy_list_limit');
+  return new Set(rows.filter(r => !isAutomaticActivityReview(r)).map(r => r.wallet_address));
+}
+export function publicAnalysisPolicy(policy) { return { action: policy?.action || 'allow', category: policy?.category || 'Unknown', name: policy?.name || null, warning: policy?.category === 'High activity' ? 'High activity detected. Analysis is limited; activity alone does not identify a bot.' : null, transactionLimit: policy?.transaction_limit || 5000, creditPlan: CREDIT_PLAN }; }
 
 export async function claimWalletSyncLease(wallet) { return await db("rpc/try_wallet_sync_lease", {method:"POST",body:JSON.stringify({p_wallet:wallet})}) === true; }

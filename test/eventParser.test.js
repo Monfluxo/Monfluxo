@@ -86,3 +86,29 @@ test("one Solana signature can produce multiple trade events", () => {
   assert.deepEqual(parsed.trades.map((x) => x.solAmount), [1, 2]);
   assert.equal(parsed.trade.signature, "sig-multi");
 });
+
+
+function sponsoredTokenMovement({direction='OUT',solChange=0,fee=110000,payerWallet=false}={}) {
+  const wallet='SponsoredWallet',sponsor='Sponsor',source='WalletToken',destination='CounterpartyToken',mint='SponsoredMint';
+  const keys=payerWallet?[wallet,sponsor,source,destination]:[sponsor,wallet,source,destination];
+  const token=(accountIndex,owner,amount)=>({accountIndex,mint,owner,uiTokenAmount:{amount:String(amount),decimals:6}});
+  const pre=[1000000000,1000000000,0,0],post=[...pre],walletIndex=payerWallet?0:1;
+  post[0]-=fee;post[walletIndex]+=solChange;
+  return{wallet,tx:{blockTime:100,transaction:{signatures:['sponsored-transfer'],message:{accountKeys:keys,instructions:[{program:'spl-token',parsed:{type:'transfer',info:{source:direction==='OUT'?source:destination,destination:direction==='OUT'?destination:source,amount:'1000000000'}}}]}},meta:{fee,preBalances:pre,postBalances:post,preTokenBalances:[token(2,wallet,direction==='OUT'?1000000000:0),token(3,sponsor,direction==='OUT'?0:1000000000)],postTokenBalances:[token(2,wallet,direction==='OUT'?0:1000000000),token(3,sponsor,direction==='OUT'?1000000000:0)],innerInstructions:[]}}};
+}
+test('another account paying the network fee cannot turn a token transfer into a sale',()=>{
+  const {wallet,tx}=sponsoredTokenMovement();const parsed=parseTransaction(tx,wallet);
+  assert.equal(parsed.trades.length,0);assert.equal(parsed.type,'TRANSFER_OUT');assert.equal(parsed.transfers[0].direction,'OUT');
+});
+test('sponsored balance-based sale uses only SOL actually received',()=>{
+  const {wallet,tx}=sponsoredTokenMovement({solChange:100000000});
+  const parsed=parseTransaction(tx,wallet);assert.equal(parsed.trades[0].type,'SELL');assert.equal(parsed.trades[0].solAmount,.1);
+});
+test('wallet-paid balance-based sale restores its own fee exactly once',()=>{
+  const {wallet,tx}=sponsoredTokenMovement({solChange:100000000,payerWallet:true});
+  assert.equal(parseTransaction(tx,wallet).trades[0].solAmount,.1);
+});
+test('sponsored balance-based buy does not subtract the sponsor fee',()=>{
+  const {wallet,tx}=sponsoredTokenMovement({direction:'IN',solChange:-100000000});
+  assert.equal(parseTransaction(tx,wallet).trades[0].solAmount,.1);
+});

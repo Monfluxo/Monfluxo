@@ -51,7 +51,7 @@ try {
   const sync = await syncWalletHistory(address, {
     mode: "deep",
     maxPages: Number(process.env.MAX_DEEP_PAGES || 500),
-    storeRaw: process.env.STORE_RAW_TRANSACTIONS !== "false"
+    storeRaw: process.env.STORE_RAW_TRANSACTIONS === "true"
   });
 
   console.log("DEEP SYNC");
@@ -73,3 +73,4 @@ try {
   console.error("Wallet repair failed:", error.message);
   process.exit(1);
 }
+

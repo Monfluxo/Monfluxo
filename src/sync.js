@@ -327,7 +327,7 @@ export async function syncWalletHistory(address, options = {}) {
     maxPages = mode === "quick"
       ? Number(process.env.MAX_QUICK_PAGES || 5)
       : Number(process.env.MAX_DEEP_PAGES || 500),
-    storeRaw = process.env.STORE_RAW_TRANSACTIONS !== "false"
+    storeRaw = process.env.STORE_RAW_TRANSACTIONS === "true"
   } = options;
 
   const policy = await assertWalletAllowed(address);
