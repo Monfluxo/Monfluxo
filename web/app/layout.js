@@ -25,9 +25,9 @@ export default function RootLayout({ children }) {
           alt=""
           aria-hidden="true"
         />
-        <div className="monfluxo-app-layer">{children}</div>
-        <SocialLinks />
+        <div className="monfluxo-app-layer">{children}<SocialLinks /></div>
       </body>
     </html>
   );
 }
+
