@@ -5,7 +5,7 @@ import {validatePolicyInput,policyError} from '../src/walletPolicy.js';
 test('credit thresholds count transactions, not provider pages',()=>{
   for(const [tx,c] of [[0,0],[1,3],[5000,3],[5001,4],[7000,4],[10000,6],[20000,11],[5000000,2501]])assert.equal(analysisCredits(tx),c);
   assert.equal(analysisCredits(0,{incremental:true}),0);assert.equal(analysisCredits(2001,{incremental:true}),2);
-  assert.throws(()=>analysisCredits(-1));assert.throws(()=>analysisCredits(NaN));assert.equal(CREDIT_PLAN.billingEnabled,false);
+  assert.throws(()=>analysisCredits(-1));assert.throws(()=>analysisCredits(NaN));assert.equal(CREDIT_PLAN.billingEnabled,false);assert.equal(CREDIT_PLAN.proMonthlyCredits,50);
 });
 test('repeated requests cannot replenish a wallet budget',()=>{
   const policy={transaction_limit:5000};assert.equal(transactionAllowance(null,policy),5000);

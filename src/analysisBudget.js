@@ -1,4 +1,4 @@
-export const CREDIT_PLAN = Object.freeze({ initialTransactions: 5000, initialCredits: 3, additionalTransactions: 2000, additionalCredits: 1, proMonthlyCredits: 30, billingEnabled: false });
+export const CREDIT_PLAN = Object.freeze({ initialTransactions: 5000, initialCredits: 3, additionalTransactions: 2000, additionalCredits: 1, proMonthlyCredits: 50, billingEnabled: process.env.MONFLUXO_CREDITS_ENABLED === "true" });
 export function analysisCredits(transactions, { incremental = false } = {}) {
   if (!Number.isSafeInteger(transactions) || transactions < 0) throw new Error('invalid_transaction_count');
   if (!transactions) return 0;

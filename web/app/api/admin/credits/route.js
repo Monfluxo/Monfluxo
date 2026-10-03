@@ -1,0 +1,4 @@
+import {sameOrigin} from '../../../../lib/creditProxy';
+const base=process.env.MONFLUXO_BACKEND_URL||'http://127.0.0.1:3000';
+async function proxy(request){if(request.method==='POST'&&!sameOrigin(request))return Response.json({error:'invalid_origin'},{status:403});try{const r=await fetch(`${base}/api/admin/credits`,{method:request.method,cache:'no-store',headers:{'Content-Type':'application/json','X-Monfluxo-Admin-Key':request.headers.get('x-monfluxo-admin-key')||''},...(request.method==='POST'?{body:await request.text()}:{}),signal:AbortSignal.timeout(20000)});return new Response(await r.text(),{status:r.status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}})}catch{return Response.json({error:'backend_unreachable'},{status:502})}}
+export const GET=proxy;export const POST=proxy;

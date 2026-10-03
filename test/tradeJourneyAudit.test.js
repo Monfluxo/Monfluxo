@@ -63,9 +63,9 @@ test('market-cap removal preserves PnL, ROI, cost, proceeds, hold and executions
 });
 test('proxy forwards encoded journey unchanged and preserves 404/no-store',async()=>{
   let requested;
-  const context=vm.createContext({process:{env:{}},URL,Response,fetch:async(url)=>{
+  const context=vm.createContext({process:{env:{}},URL,Response,creditHeaders:()=>({}),fetch:async(url)=>{
     requested=url;return new Response('{"error":"trade_not_found"}',{status:404});}});
-  const source=read('../web/app/api/data/trade/[wallet]/[mint]/route.js').replace('export async function','async function');
+  const source=read('../web/app/api/data/trade/[wallet]/[mint]/route.js').replace(/^import .*;\n/gm,'').replace('export async function','async function');
   const GET=vm.runInContext(source+'\nGET',context);
   const journey=`${mint}:100 +/&?`;
   const response=await GET({url:`http://localhost/api/data/trade/${wallet}/${mint}?journey=${encodeURIComponent(journey)}`},{params:Promise.resolve({wallet,mint})});
@@ -143,8 +143,8 @@ test('rank migration hides the legacy duplicate without collapsing two canonical
   assert.equal(selected.length,2);assert.equal(selected[1].journey_id,`${mint}:v2:c:0`);
 });
 test('duplicate journey query parameters and blank identifiers return 400 at the proxy',async()=>{
-  const context=vm.createContext({process:{env:{}},URL,Response,fetch:async()=>{throw new Error('must not reach backend')}});
-  const source=read('../web/app/api/data/trade/[wallet]/[mint]/route.js').replace('export async function','async function');
+  const context=vm.createContext({process:{env:{}},URL,Response,creditHeaders:()=>({}),fetch:async()=>{throw new Error('must not reach backend')}});
+  const source=read('../web/app/api/data/trade/[wallet]/[mint]/route.js').replace(/^import .*;\n/gm,'').replace('export async function','async function');
   const GET=vm.runInContext(source+'\nGET',context);
   for(const qs of ['journey=', 'journey=%20', 'journey=A&journey=B']){
     const r=await GET({url:`http://localhost/api/data/trade/${wallet}/${mint}?${qs}`},{params:{wallet,mint}});
@@ -163,7 +163,7 @@ test('non-string metadata and event labels are normalized before React render',a
 });
 test('backend forwards exact journey, returns 404, and rejects duplicate keys',async()=>{
   let received;
-  const context=vm.createContext({process:{env:{},argv:[]},URL,console,getTradeDetail:async(w,m,id)=>{received=[w,m,id];return null}});
+  const context=vm.createContext({process:{env:{},argv:[]},URL,console,creditsEnabled:()=>false,getTradeDetail:async(w,m,id)=>{received=[w,m,id];return null}});
   const source=read('../src/httpApi.js').replace(/^import .*;\n/gm,'').replace(/export /g,'');
   const handle=vm.runInContext(source+'\nhandleRequest',context);
   const call=async qs=>{let status;const response={writeHead(code){status=code},end(){}};

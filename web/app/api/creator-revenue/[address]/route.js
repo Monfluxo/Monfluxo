@@ -1,3 +1,4 @@
+import {creditHeaders} from "../../../../lib/creditProxy";
 const BACKEND_BASE = process.env.MONFLUXO_BACKEND_URL || "http://127.0.0.1:3000";
 
 export async function GET(_request, { params }) {
@@ -5,7 +6,7 @@ export async function GET(_request, { params }) {
 
   try {
     const response = await fetch(`${BACKEND_BASE}/api/creator-revenue/${encodeURIComponent(address)}`, {
-      cache: "no-store"
+      headers: creditHeaders(_request), cache: "no-store"
     });
 
     const text = await response.text();
@@ -29,3 +30,4 @@ export async function GET(_request, { params }) {
     );
   }
 }
+
