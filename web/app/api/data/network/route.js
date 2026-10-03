@@ -1,0 +1,2 @@
+const base=process.env.MONFLUXO_BACKEND_URL||'http://127.0.0.1:3000';
+export async function GET(){try{const r=await fetch(`${base}/api/data/network`,{cache:'no-store',signal:AbortSignal.timeout(20000)});return new Response(await r.text(),{status:r.status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}})}catch{return Response.json({error:'network_telemetry_unavailable'},{status:502})}}
