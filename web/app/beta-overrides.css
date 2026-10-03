@@ -2,6 +2,11 @@
    Current positions are the single canonical open-position table. */
 .trade-grid + .panel { display: none; }
 
+/* Header navigation is intentionally limited to Data + Home. Hide any legacy Solana pill
+   that may survive in a cached/older component render during rolling deployments. */
+.topbar-right > .pill { display:none!important; }
+.topbar-right{margin-left:auto;display:flex;align-items:center;justify-content:flex-end;gap:8px;}
+
 /* Wallets without a resolved Pump.fun profile image use the generic Pump.fun avatar. */
 .wallet-identity:not(:has(img))::before {
   content: "";
