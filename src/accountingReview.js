@@ -1,6 +1,6 @@
 export function buildAccountingReview(positions, { historyComplete = false, truncated = false } = {}) {
   const rows = positions.filter(p => Number(p.unmatchedSellProceedsSol || 0) > 0)
-    .map(p => ({tokenMint:p.tokenMint, unmatchedSoldTokens:Number(p.unmatchedSoldTokens || 0),
+    .map(p => ({tokenMint:p.tokenMint || p.mint, unmatchedSoldTokens:Number(p.unmatchedSoldTokens || 0),
       unmatchedSellProceedsSol:Number(p.unmatchedSellProceedsSol || 0)}))
     .sort((a,b) => b.unmatchedSellProceedsSol-a.unmatchedSellProceedsSol || a.tokenMint.localeCompare(b.tokenMint));
   return {status:truncated?'partial':historyComplete?'ready':'provisional',
