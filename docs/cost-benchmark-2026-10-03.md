@@ -59,3 +59,10 @@ La primera petición falló por transacciones versión 1. Se actualizó maxSuppo
 - https://supabase.com/docs/guides/platform/billing-on-supabase
 
 Evidencia agregada y métricas por página: cost-benchmark-2026-10-03.json.
+
+
+## Comparación posterior con páginas de 1.000
+
+El 2026-10-03, el worker aceptó 1.000 resultados por página con la clave actual. Se reprocesaron 5.000 transacciones recientes en 5 páginas. Job: 19,73 s; descarga: 9,94 s; escritura: 2,27 s; CPU de páginas: 4,10 s; RSS máximo: 229,45 MB; créditos de historial: 500. Primera prueba de 100: job 72,31 s; descarga 42,53 s; escritura 11,81 s; RSS máximo 117,47 MB. Aceleración observada del job: 3,66×; descarga: 4,28×.
+
+Limitaciones: segunda prueba sobre datos ya guardados, red/proveedor y ventana reciente distintos. No es una comparación controlada del mismo conjunto desde base vacía, ni demuestra una mejora universal de 3,66×. El cursor original de 12.000, estado parcial y límite 12.000 se restauraron tras la prueba; no se borraron registros para producir un ensayo frío. Las páginas grandes se activaron solo en el worker; quick/incremental mantienen 100 para evitar descargar 1.000 en cada actualización pequeña. La prueba no verifica ni cambia el plan comercial contratado en Helius.

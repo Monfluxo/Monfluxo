@@ -4,11 +4,11 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {transactionAllowance,indexedWork} from '../src/analysisBudget.js';
 const wallet='11111111111111111111111111111111';
-function syncHarness({size=5000000,initial=null,policy={transaction_limit:5000},blockAt=Infinity,failWriteAt=Infinity}={}) {
+function syncHarness({size=5000000,initial=null,policy={transaction_limit:5000},blockAt=Infinity,failWriteAt=Infinity,env={}}={}) {
   let state=initial?{...initial}:null,calls=0,writes=0,policyCalls=0;
   const source=readFileSync(new URL('../src/sync.js',import.meta.url),'utf8').replace(/^import[\s\S]*?;\n/gm,'').replace(/export /g,'');
   const noop=async()=>{};
-  const context=vm.createContext({process:{env:{},cpuUsage:process.cpuUsage,memoryUsage:process.memoryUsage},Buffer,console:{...console,log:()=>{}},transactionAllowance,indexedWork,
+  const context=vm.createContext({process:{env,cpuUsage:process.cpuUsage,memoryUsage:process.memoryUsage},Buffer,console:{...console,log:()=>{}},transactionAllowance,indexedWork,
     assertWalletAllowed:async()=>{if(++policyCalls>=blockAt){const e=new Error('Blocked');e.code='wallet_blocked';throw e}return policy},
     claimWalletSyncLease:async()=>{if(state?.status==='syncing')return false;state={...state,status:'syncing'};return true},
     assertEventModelV2Schema:noop,upsertWallet:noop,getSyncState:async()=>state?{...state}:null,
@@ -42,4 +42,9 @@ test('failed write retains previous successful cursor and work checkpoint',async
 });
 test('simultaneous calls cannot acquire the same sync lease',async()=>{
   const h=syncHarness({size:123});const results=await Promise.allSettled([h.sync({mode:'deep'}),h.sync({mode:'deep'})]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(h.state().transactions_scanned,123);
+});
+
+test("large deep pages preserve exact budget and quick requests stay small",async()=>{
+ const deep=syncHarness({env:{HELIUS_FULL_PAGE_LIMIT:"1000"}});await deep.sync({mode:"deep",maxPages:50});assert.equal(deep.calls(),5);assert.equal(deep.state().transactions_scanned,5000);
+ const quick=syncHarness({env:{HELIUS_FULL_PAGE_LIMIT:"1000"}});const r=await quick.sync({mode:"quick",maxPages:1});assert.equal(r.transactionsStored,100);assert.equal(quick.calls(),1);
 });
