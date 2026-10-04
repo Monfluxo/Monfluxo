@@ -10,6 +10,7 @@ import "./raster-visuals.css";
 import "./landing.css";
 import "./social-links.css";
 import SocialLinks from "./SocialLinks";
+import WebAnalytics from "./WebAnalytics";
 
 export const metadata = {
   title: "MONFLUXO — On-chain Intelligence for Solana",
@@ -26,6 +27,7 @@ export default function RootLayout({ children }) {
           alt=""
           aria-hidden="true"
         />
+        <WebAnalytics token={/^[a-f0-9]{32}$/i.test(process.env.CLOUDFLARE_WEB_ANALYTICS_TOKEN||"")?process.env.CLOUDFLARE_WEB_ANALYTICS_TOKEN:null}/>
         <div className="monfluxo-app-layer">{children}<SocialLinks /></div>
       </body>
     </html>
