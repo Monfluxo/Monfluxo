@@ -12,3 +12,7 @@ test('full metadata warms cache for subsequent fast dashboard',async()=>{
  const original=global.fetch;let calls=0;global.fetch=async()=>{calls++;return{ok:true,json:async()=>({result:{content:{metadata:{name:'Example',symbol:'EX'},links:{image:'https://example.invalid/image.png'}},token_info:{price_info:{price_per_token:2}}}})}};
  try{const make=()=>({trades:{best:[{tokenMint:'warm-mint',costSol:2,pnlSol:3}]}});await enrichTokenMetadata(make(),true);const count=calls;const d=make();await enrichTokenMetadata(d);assert.equal(calls,count);assert.equal(d.trades.best[0].tokenSymbol,'EX');assert.equal(d.trades.best[0].pnlSol,3);}finally{global.fetch=original}
 });
+test('cache misses do not erase previously resolved names or tickers',async()=>{
+ const dashboard={trades:{best:[{tokenMint:'uncached-preserved-mint',tokenName:'Known name',tokenSymbol:'KNOWN',pnlSol:4}],worst:[]}};
+ await enrichTokenMetadata(dashboard,false);assert.equal(dashboard.trades.best[0].tokenName,'Known name');assert.equal(dashboard.trades.best[0].tokenSymbol,'KNOWN');assert.equal(dashboard.trades.best[0].pnlSol,4);
+});
