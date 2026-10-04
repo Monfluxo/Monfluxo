@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-import {bearer,hashCredential,currentAccount,assertCreditAccess,loginCredits,creditSummary} from '../src/creditService.js';
+import {bearer,hashCredential,currentAccount,assertCreditAccess,loginCredits,creditSummary,requestCreditWallet} from '../src/creditService.js';
 const token='a'.repeat(43),req={headers:{authorization:`Bearer ${token}`}};
 function mockFetch(t,fn){const original=globalThis.fetch;globalThis.fetch=async(url,options)=>Response.json(await fn(String(url),options));t.after(()=>{globalThis.fetch=original;});}
 test('credentials reject malformed bearer tokens and hash private codes',()=>{
@@ -46,3 +46,5 @@ test('login keeps session out of JSON and sets a secure HttpOnly cookie',async()
 test('proxy forwards only a well-formed session token from the private cookie',()=>{
  const p=proxyContext(()=>{});assert.equal(p.creditHeaders({headers:new Headers({cookie:`other=value; mf_session=${token}`})}).Authorization,`Bearer ${token}`);assert.deepEqual({...p.creditHeaders({headers:new Headers({cookie:'mf_session=invalid'})})},{});
 });
+
+test('wallet extensions reject arbitrary blocks before storage or indexing',async t=>{mockFetch(t,()=>{throw Error('No storage expected')});for(const extend of [10000,2001,-2,'2000',null])await assert.rejects(requestCreditWallet(req,'wallet',extend),e=>e.code==='invalid_request'&&e.statusCode===400);});
