@@ -1,3 +1,4 @@
+import { readChainHoldings } from "./chainHoldings.js";
 import { createResultCache } from "./resultCache.js";
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
@@ -62,48 +63,36 @@ function normalizeHolding(asset) {
   };
 }
 
+export function getFreshWalletHoldings(address) { return readChainHoldings(address,rpc); }
+
 export async function getWalletPortfolioSnapshot(address) {
   return cache.get(address, () => loadWalletPortfolioSnapshot(address));
 }
 
-async function loadWalletPortfolioSnapshot(address) {
-
-  const assetsResult = await rpc("getAssetsByOwner", {
-    ownerAddress: address,
-    page: 1,
-    limit: 1000,
-    displayOptions: { showFungible: true, showNativeBalance: true, showZeroBalance: false }
-  }, "monfluxo-wallet-assets");
-
-  const native = assetsResult?.nativeBalance || {};
-  const solBalance = Number(native.lamports || 0) / 1e9;
-  const solPriceUsd = Number(native.price_per_sol ?? native.pricePerSol);
-  const explicitSolValue = Number(native.total_price ?? native.totalPrice);
-  const solValueUsd = Number.isFinite(explicitSolValue) && explicitSolValue >= 0
-    ? explicitSolValue
-    : Number.isFinite(solPriceUsd) && solPriceUsd > 0
-      ? solBalance * solPriceUsd
-      : null;
-  const holdings = (assetsResult?.items || []).map(normalizeHolding).filter(Boolean);
-  const pricedHoldings = holdings.filter((item) => Number.isFinite(item.valueUsd));
-  const tokenValueUsd = pricedHoldings.reduce((sum, item) => sum + item.valueUsd, 0);
-  const walletValueUsd = (Number.isFinite(solValueUsd) ? solValueUsd : 0) + tokenValueUsd;
-  const result = {
-    status: "ready",
-    generatedAt: new Date().toISOString(),
-    solBalance,
-    solPriceUsd: Number.isFinite(solPriceUsd) && solPriceUsd > 0 ? solPriceUsd : null,
-    solValueUsd,
-    tokenValueUsd,
-    walletValueUsd,
-    tokenCount: holdings.length,
-    pricedTokenCount: pricedHoldings.length,
-    unpricedTokenCount: holdings.length - pricedHoldings.length,
-    assetsTruncated: Number(assetsResult?.total || 0) > (assetsResult?.items || []).length,
-    holdings,
-    topHoldings: [...pricedHoldings].sort((a, b) => b.valueUsd - a.valueUsd).slice(0, 6)
-  };
-  return result;
+export async function loadWalletPortfolioSnapshot(address) {
+  // Account balances are authoritative; DAS supplies optional names and prices only.
+  const [chain, assetsResult] = await Promise.all([
+    readChainHoldings(address,rpc),
+    rpc("getAssetsByOwner",{ownerAddress:address,page:1,limit:1000,displayOptions:{showFungible:true,showNativeBalance:true,showZeroBalance:false}},"monfluxo-wallet-assets").catch(()=>null)
+  ]);
+  const metadata=new Map((assetsResult?.items||[]).map(asset=>[asset.id,normalizeHolding(asset)]));
+  const holdings=chain.holdings.map(holding=>{
+    const asset=metadata.get(holding.tokenMint);
+    const priceUsd=asset?.priceUsd??null;
+    return {...asset,...holding,priceUsd,valueUsd:priceUsd!=null?holding.amount*priceUsd:null};
+  });
+  const solBalance=chain.nativeBalanceLamports/1e9;
+  const rawPrice=assetsResult?.nativeBalance?.price_per_sol??assetsResult?.nativeBalance?.pricePerSol;
+  const solPriceUsd=Number(rawPrice)>0?Number(rawPrice):null;
+  const solValueUsd=solPriceUsd!=null?solBalance*solPriceUsd:null;
+  const pricedHoldings=holdings.filter(item=>item.valueUsd!=null&&Number.isFinite(item.valueUsd));
+  const tokenValueUsd=pricedHoldings.reduce((sum,item)=>sum+item.valueUsd,0);
+  return {status:"ready",source:"token_accounts",generatedAt:chain.generatedAt,slotFrom:chain.slotFrom,slotTo:chain.slotTo,
+    nativeBalanceLamports:chain.nativeBalanceLamports,solBalance,solPriceUsd,solValueUsd,tokenValueUsd,
+    walletValueUsd:(solValueUsd||0)+tokenValueUsd,tokenCount:holdings.length,pricedTokenCount:pricedHoldings.length,
+    unpricedTokenCount:holdings.length-pricedHoldings.length,assetsTruncated:false,
+    metadataIncomplete:!assetsResult||Number(assetsResult.total||0)>(assetsResult.items||[]).length,
+    holdings,topHoldings:[...pricedHoldings].sort((a,b)=>b.valueUsd-a.valueUsd).slice(0,6)};
 }
 
 export function applyPortfolioPricesToDashboard(dashboard, portfolio) {

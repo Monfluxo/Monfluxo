@@ -3,9 +3,10 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 export async function openCreditWallet(wallet,extend=0){const r=await fetch('/api/credits/wallet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wallet,extend})});const p=await r.json();if(!r.ok)throw Error(p.message||p.error||'Unable to authorize wallet');window.dispatchEvent(new Event('monfluxo-credits'));return p;}
 const date=v=>new Date(v).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});
 const reason=v=>({beta_activation:'Beta credits',wallet_unlock:'Wallet unlocked',analysis:'Wallet analysis',extension:'History extension',credit_purchase:'Credit purchase'}[v]||'Pro subscription');
-export default function CreditsButton(){
+export default function CreditsButton({onAccountChange}){
  const [data,setData]=useState(null),[open,setOpen]=useState(false),[code,setCode]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');const dialog=useRef(null),trigger=useRef(null);
  const refresh=useCallback(async()=>{try{const r=await fetch('/api/credits',{cache:'no-store'});if(r.status===401){setData(null);return;}const p=await r.json();if(!r.ok)throw Error(p.message||'Credits unavailable');setData(p);setError('');}catch(e){setError(e.message);}},[]);
+ useEffect(()=>{onAccountChange?.(data?.account?.isOwner===true);},[data,onAccountChange]);
  useEffect(()=>{refresh();const update=()=>refresh();window.addEventListener('monfluxo-credits',update);const interval=setInterval(update,30000);return()=>{window.removeEventListener('monfluxo-credits',update);clearInterval(interval);}},[refresh]);
  useEffect(()=>{if(open){dialog.current?.showModal();refresh();}else if(dialog.current?.open)dialog.current.close();},[open,refresh]);
  async function action(path,body={}){setBusy(true);setError('');setNotice('');try{const r=await fetch(`/api/credits/${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const p=await r.json();if(!r.ok)throw Error(p.message||p.error);if(path==='login')setCode('');if(path==='logout')setData(null);if(path==='order')setNotice(`Request ${p.order.id.slice(0,8)} recorded. Contact the MONFLUXO team to complete payment. Credits are added after payment confirmation.`);await refresh();}catch(e){setError(e.message);}finally{setBusy(false);}}

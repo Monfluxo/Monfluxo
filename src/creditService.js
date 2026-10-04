@@ -1,4 +1,5 @@
 import {createHash,randomBytes} from 'node:crypto';
+import {prepareInitialHoldings,saveInitialHoldings} from './initialHoldingsSnapshot.js';
 import {assertWalletAllowed} from './walletPolicy.js';
 export const creditsEnabled=()=>process.env.MONFLUXO_CREDITS_ENABLED==='true';
 export const hashCredential=value=>createHash('sha256').update(value).digest('hex');
@@ -42,7 +43,10 @@ export async function assertCreditAccess(req,wallet){
 export async function requestCreditWallet(req,wallet,extend=0){
  if(![-1,0,2000].includes(extend))throw creditError('invalid_request');
  const account=await currentAccount(req,{active:true});await assertWalletAllowed(wallet);
- return rpc('credit_wallet_request',{p_account:account.id,p_wallet:wallet,p_extend:extend});
+ const initial=extend===0?await prepareInitialHoldings(wallet):null;
+ const result=await rpc('credit_wallet_request',{p_account:account.id,p_wallet:wallet,p_extend:extend});
+ try {await saveInitialHoldings(initial);}catch(error){console.warn('Initial holdings snapshot could not be saved:',error.code||error.message);return {...result,initialSnapshotSaved:false};}
+ return result;
 }
 export async function createCreditInvite(label){
  if(typeof label!=='string'||!label.trim()||label.length>80)throw creditError('invalid_label');

@@ -204,6 +204,7 @@ export function buildWalletDashboardResponse(productResult) {
       historyComplete,
       backfillPending: coverage.backfillPending === true,
       budgetExhausted: coverage.budgetExhausted === true,
+      transactionsIndexed: coverage.transactionsIndexed ?? null,
       pagesScanned: n(coverage.pagesScanned),
       oldestIndexedAt: coverage.oldestIndexedAt || null,
       newestIndexedAt: coverage.newestIndexedAt || null,
