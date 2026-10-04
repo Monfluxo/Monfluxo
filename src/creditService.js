@@ -40,6 +40,7 @@ export async function assertCreditAccess(req,wallet){
  if(!access.length)throw creditError('wallet_unlock_required',402);return account;
 }
 export async function requestCreditWallet(req,wallet,extend=0){
+ if(![-1,0,2000].includes(extend))throw creditError('invalid_request');
  const account=await currentAccount(req,{active:true});await assertWalletAllowed(wallet);
  return rpc('credit_wallet_request',{p_account:account.id,p_wallet:wallet,p_extend:extend});
 }
