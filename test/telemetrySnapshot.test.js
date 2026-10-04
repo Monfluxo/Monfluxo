@@ -22,3 +22,8 @@ test('public network route requires no admin key while admin telemetry stays pro
  async function call(path){let status,body;await handle({method:'GET',url:path,headers:{}},{writeHead(s){status=s},end(b){body=b}});return{status,body};}
  assert.equal((await call('/api/data/network')).status,200);assert.equal((await call('/api/admin/indexer')).status,401);
 });
+
+test('admin queue orders recent paused wallets first and retains exact transactions separately from pages',()=>{
+ const s=buildTelemetrySnapshot({now,jobs:[{wallet_address:'old',status:'paused',updated_at:at(-90000)},{wallet_address:'new',status:'paused',updated_at:at(-1000)},{wallet_address:'middle',status:'paused',updated_at:at(-5000)}],states:[{wallet_address:'old',transactions_scanned:5000,pages_scanned:50},{wallet_address:'new',transactions_scanned:32000,pages_scanned:140},{wallet_address:'middle',transactions_scanned:5000,pages_scanned:50}]});
+ assert.deepEqual(s.jobs.map(r=>r.wallet_address),['new','middle','old']);assert.equal(s.jobs[0].transactions_scanned,32000);assert.equal(s.jobs[0].pages_scanned,140);
+});
