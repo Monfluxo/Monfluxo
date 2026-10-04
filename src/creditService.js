@@ -27,7 +27,7 @@ export async function creditSummary(account){
  creditDb(`credit_wallet_access?account_id=eq.${account.id}&select=wallet_address,kind&order=created_at.desc&limit=100`),
  creditDb(`credit_orders?account_id=eq.${account.id}&select=id,status,credits,usd,created_at&order=created_at.desc&limit=10`)]);
  const reserved=requests.reduce((s,r)=>s+r.reserved-r.charged,0),expired=new Date(account.expires_at)<=new Date();
- return {account:{id:account.id,label:account.label,plan:account.plan},available:expired?0:Math.max(0,account.cycle_credits+account.bonus_credits-reserved),cycleRemaining:expired?0:account.cycle_credits,cycleTotal:50,bonus:expired?0:account.bonus_credits,reserved,periodDays:account.plan==='beta'?14:30,expiresAt:account.expires_at,cycleStartedAt:account.cycle_started_at,expired,ledger,access,orders,prices:{proUsd:29,packUsd:5,packCredits:10,analysisCredits:3,analysisTransactions:5000,unlockCredits:1,extensionCredits:1,extensionTransactions:2000},purchaseMode:'manual_confirmation'};
+ return {account:{id:account.id,label:account.label,plan:account.plan,isOwner:account.is_owner===true},available:expired?0:Math.max(0,account.cycle_credits+account.bonus_credits-reserved),cycleRemaining:expired?0:account.cycle_credits,cycleTotal:50,bonus:expired?0:account.bonus_credits,reserved,periodDays:account.plan==='beta'?14:30,expiresAt:account.expires_at,cycleStartedAt:account.cycle_started_at,expired,ledger,access,orders,prices:{proUsd:29,packUsd:5,packCredits:10,analysisCredits:3,analysisTransactions:5000,unlockCredits:1,extensionCredits:1,extensionTransactions:2000},purchaseMode:'manual_confirmation'};
 }
 export async function loginCredits(code){
  if(typeof code!=='string'||!/^mf_[A-Za-z0-9_-]{43}$/.test(code.trim()))throw creditError('invalid_invitation',401);
@@ -59,10 +59,11 @@ export async function createCreditOrder(account){
 }
 export async function adminCreditAction(input){
  if(input.action==='beta_schedule'){const date=new Date(input.startsAt);if(!Number.isFinite(date.getTime()))throw creditError('invalid_request');return rpc('credit_schedule_beta',{p_start:date.toISOString()});}
+ if(input.action==='owner_access'){const code=`mf_${randomBytes(32).toString('base64url')}`;await rpc('credit_create_owner',{p_hash:hashCredential(code)});return{code,label:'MONFLUXO Owner'};}
  if(input.action==='invite')return createCreditInvite(input.label);
  if(input.action==='confirm_order')return rpc('credit_confirm_order',{p_order:input.orderId,p_reference:input.paymentReference});
  if(input.action==='renew')return rpc('credit_renew',{p_account:input.accountId,p_reference:input.paymentReference});
  throw creditError('invalid_request');
 }
-export async function adminCreditAccounts(){return{beta: (await creditDb('credit_beta_config?select=starts_at&limit=1'))[0],accounts:await creditDb('credit_accounts?select=id,label,plan,cycle_credits,bonus_credits,expires_at,disabled&order=cycle_started_at.desc&limit=100'),orders:await creditDb('credit_orders?status=eq.pending&select=id,account_id,credits,usd,created_at&order=created_at.desc&limit=100')};}
+export async function adminCreditAccounts(){return{beta: (await creditDb('credit_beta_config?select=starts_at&limit=1'))[0],accounts:await creditDb('credit_accounts?select=id,label,plan,cycle_credits,bonus_credits,expires_at,disabled,is_owner&order=cycle_started_at.desc&limit=100'),orders:await creditDb('credit_orders?status=eq.pending&select=id,account_id,credits,usd,created_at&order=created_at.desc&limit=100')};}
 export async function logoutCredits(req){const token=bearer(req);if(token)await creditDb(`credit_sessions?token_hash=eq.${hashCredential(token)}`,{method:'DELETE'});}
