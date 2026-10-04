@@ -65,5 +65,5 @@ export async function adminCreditAction(input){
  if(input.action==='renew')return rpc('credit_renew',{p_account:input.accountId,p_reference:input.paymentReference});
  throw creditError('invalid_request');
 }
-export async function adminCreditAccounts(){return{beta: (await creditDb('credit_beta_config?select=starts_at&limit=1'))[0],accounts:await creditDb('credit_accounts?select=id,label,plan,cycle_credits,bonus_credits,expires_at,disabled,is_owner&order=cycle_started_at.desc&limit=100'),orders:await creditDb('credit_orders?status=eq.pending&select=id,account_id,credits,usd,created_at&order=created_at.desc&limit=100')};}
+export async function adminCreditAccounts(){return{usage:await rpc('credit_admin_usage',{}),beta: (await creditDb('credit_beta_config?select=starts_at&limit=1'))[0],accounts:await creditDb('credit_accounts?select=id,label,plan,cycle_credits,bonus_credits,expires_at,disabled,is_owner&order=cycle_started_at.desc&limit=100'),orders:await creditDb('credit_orders?status=eq.pending&select=id,account_id,credits,usd,created_at&order=created_at.desc&limit=100')};}
 export async function logoutCredits(req){const token=bearer(req);if(token)await creditDb(`credit_sessions?token_hash=eq.${hashCredential(token)}`,{method:'DELETE'});}

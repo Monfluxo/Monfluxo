@@ -1,0 +1,31 @@
+begin;
+set local role service_role;
+do $$
+declare a uuid; b uuid; owner_id uuid; r jsonb; report jsonb; item jsonb;
+ w text:='77777777777777777777777777777777';
+begin
+ if exists(select 1 from public.wallets where address=w) then raise exception 'fixture_exists'; end if;
+ insert into public.credit_accounts(label,plan) values('Telemetry A','beta') returning id into a;
+ insert into public.credit_accounts(label,plan) values('Telemetry B','beta') returning id into b;
+ r:=public.credit_wallet_request(a,w,0);r:=public.credit_wallet_request(a,w,0);
+ update public.wallet_sync_state set transactions_scanned=1000 where wallet_address=w;
+ update public.wallet_sync_state set transactions_scanned=1000 where wallet_address=w;
+ update public.wallet_sync_state set transactions_scanned=5000,status='idle' where wallet_address=w;
+ r:=public.credit_wallet_request(b,w,0);
+ r:=public.credit_wallet_request(a,w,2000);
+ update public.wallet_sync_state set transactions_scanned=6000 where wallet_address=w;
+ update public.wallet_index_jobs set status='error',last_error='telemetry fixture failure' where wallet_address=w;
+ update public.wallet_sync_state set transactions_scanned=7000 where wallet_address=w;
+ perform public.credit_create_owner(repeat('f',64));
+ owner_id:=public.credit_login(repeat('f',64),repeat('d',64));
+ r:=public.credit_wallet_request(owner_id,w,0);
+ report:=public.credit_admin_usage();
+ select value into item from jsonb_array_elements(report->'testers') where value->>'id'=a::text;
+ if (item->>'opens')::int<>2 or (item->>'wallets')::int<>1 or (item->>'transactions')::int<>6000 then raise exception 'wrong_tester_counts: %',item; end if;
+ if (item->>'credits_consumed')::int<>4 or (item->>'failed')::int<>1 or item->>'last_error'<>'telemetry fixture failure' then raise exception 'wrong_cost_or_failure: %',item; end if;
+ select value into item from jsonb_array_elements(report->'popularWallets') where value->>'wallet_address'=w;
+ if (item->>'opens')::int<>3 or (item->>'users')::int<>2 then raise exception 'owner_polling_or_extension_counted: %',item; end if;
+ if has_table_privilege('anon','public.credit_wallet_usage','select') or has_function_privilege('anon','public.credit_admin_usage()','execute') then raise exception 'public_telemetry'; end if;
+end $$;
+select 'PASS: explicit opens, distinct users, saved transaction attribution, stable terminal totals, failure details, owner exclusion, private telemetry' as result;
+rollback;
