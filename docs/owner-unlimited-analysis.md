@@ -1,0 +1,9 @@
+# Owner research access
+
+Owner requests consume zero credits and authorize the wallet's entire history. The server records owner_unlimited in the wallet policy, which background workers honor across resumable slices. There is no 5,000-transaction starting pause, no 2,000-step requirement and no 50,000 ceiling. Reopening an incomplete Owner wallet authorizes continuing from its saved cursor. Complete Owner reconstruction also bypasses MAX_DEEP_TRADE_ROWS; partial quick views remain provisional while history indexes.
+
+Authorization is server-side and restricted to the existing is_owner account. Authentication, disabled-account checks, explicit manual bans, RPC provider rate limits and concurrency coordination remain. Owner access ignores subscription expiry. Automatic entity restrictions can be overridden by an explicit Owner scan, retaining known institutional wallets as excluded from public rankings. A live paid request is allowed to settle before Owner can replace its budget, preventing cross-account billing corruption. Existing Owner wallets are not bulk-resumed; opening one again explicitly authorizes the full scan.
+
+Beta/Pro retain their original budgets and credit charges. Non-owner requests cannot claim the owner_unlimited flag, buy a redundant extension on an Owner-authorized scan or replace that approved budget with a paid request. A manual policy save clears the flag, allowing the administrator to interrupt an authorized scan. Sync checks the current allowance before each new page.
+
+Validation: rollback SQL tests cover >150,000 saved transactions, free initial/repeated Owner requests, private RPC permissions, manual bans, and unchanged 3-credit/5,000 non-owner allowance. Indexer fixture finishes 53,001 transactions without a budget pause. Analyzer fixture bypasses a configured deep-row cutoff.

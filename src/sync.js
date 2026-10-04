@@ -405,7 +405,7 @@ export async function syncWalletHistory(address, options = {}) {
   try {
     while (page < maxPages && work < allowance) {
       const currentPolicy = await assertWalletAllowed(address);
-      if (currentPolicy.transaction_limit < policy.transaction_limit && work >= transactionAllowance(previous, currentPolicy)) { budgetExhausted = true; break; }
+      if (work >= transactionAllowance(previous, currentPolicy)) { budgetExhausted = true; break; }
       page++;
 
       const pageLimit = mode === "deep" ? Math.min(1000, Math.max(1, Number(process.env.HELIUS_FULL_PAGE_LIMIT || 100))) : 100;

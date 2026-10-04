@@ -1,3 +1,4 @@
+import {getWalletPolicy} from "./walletPolicy.js";
 import { buildAccountingReview } from "./accountingReview.js";
 import { buildHoldBehavior } from "./holdIntelligence.js";
 import { buildWalletIntelligenceSummary } from "./intelligenceSummary.js";
@@ -267,7 +268,8 @@ export async function analyzeWallet(address, options = {}) {
     : await syncWalletHistory(address, { mode });
   state = await getSyncState(address);
   const pageSize = 1000;
-  const maxRows = mode === "quick" && state?.history_complete !== true
+  const policy=await getWalletPolicy(address);
+  const maxRows = policy?.owner_unlimited===true && (mode!=="quick"||state?.history_complete===true) ? Infinity : mode === "quick" && state?.history_complete !== true
     ? Number(process.env.MAX_QUICK_TRADE_ROWS || 5000)
     : Number(process.env.MAX_DEEP_TRADE_ROWS || 500000);
 

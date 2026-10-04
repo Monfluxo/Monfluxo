@@ -58,3 +58,8 @@ test('complete deep refresh counts only the new prefix before the saved signatur
  assert.equal(h.state().transactions_scanned,100);
  assert.equal(h.calls(),1);
 });
+
+test('owner authorizations index past 50,000 and finish without a paid budget',async()=>{
+ const h=syncHarness({size:53001,policy:{transaction_limit:5000,owner_unlimited:true},env:{HELIUS_FULL_PAGE_LIMIT:'1000'}});
+ const result=await h.sync({mode:'deep',maxPages:100});assert.equal(result.historyComplete,true);assert.equal(result.budgetExhausted,false);assert.equal(h.state().transactions_scanned,53001);
+});

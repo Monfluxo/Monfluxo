@@ -35,7 +35,7 @@ export function validatePolicyInput(input) {
   const limit = input.transactionLimit ?? 5000;
   if (!Number.isSafeInteger(limit) || limit < 5000 || limit > 50000) throw new Error('invalid_transaction_limit');
   if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 300) throw new Error('policy_reason_required');
-  return { action: input.action, transaction_limit: limit, reason: input.reason.trim(), name: String(input.name || '').slice(0,120), category: String(input.category || 'Manual').slice(0,80), source: 'manual', checked_at: new Date().toISOString() };
+  return { action: input.action, transaction_limit: limit, reason: input.reason.trim(), name: String(input.name || '').slice(0,120), category: String(input.category || 'Manual').slice(0,80), source: 'manual', owner_unlimited:false, checked_at: new Date().toISOString() };
 }
 async function lookupIdentity(wallet) {
   if (Date.now() < identityDisabledUntil) return null;
@@ -76,13 +76,13 @@ export function isAutomaticActivityReview(policy) {
   return policy?.source === 'helius_preflight' && policy.action === 'review' && policy.category === 'High activity';
 }
 export function policyError(policy, {readOnly = false} = {}) {
-  if (isAutomaticActivityReview(policy) || (readOnly && policy?.action === 'review')) return null;
+  if ((policy?.owner_unlimited === true && !(policy.action === 'block' && policy.source === 'manual')) || isAutomaticActivityReview(policy) || (readOnly && policy?.action === 'review')) return null;
   if (!['block', 'review'].includes(policy?.action)) return null;
   const error = new Error(policy.reason || 'Wallet analysis restricted.');
   error.code = policy.action === 'block' ? 'wallet_blocked' : 'wallet_review_required'; error.statusCode = 403;
   return error;
 }
-export async function assertWalletAllowed(wallet) { const policy = await preflightWallet(wallet); const error = policyError(policy); if (error) throw error; return policy; }
+export async function assertWalletAllowed(wallet,{owner=false}={}) { const policy = await preflightWallet(wallet); const error = policyError(policy); if (error && !(owner && !(policy?.action==='block' && policy?.source==='manual'))) throw error; return policy; }
 export async function assertWalletReadable(wallet) {
   const policy = await preflightWallet(wallet);
   const error = policyError(policy, {readOnly:true});
@@ -94,6 +94,6 @@ export async function excludedWallets() {
   if (rows.length === 10000) throw new Error('wallet_policy_list_limit');
   return new Set(rows.filter(r => !isAutomaticActivityReview(r)).map(r => r.wallet_address));
 }
-export function publicAnalysisPolicy(policy) { return { action: policy?.action || 'allow', category: policy?.category || 'Unknown', name: policy?.name || null, warning: policy?.category === 'High activity' ? 'High activity detected. Analysis is limited; activity alone does not identify a bot.' : null, transactionLimit: policy?.transaction_limit || 5000, creditPlan: CREDIT_PLAN }; }
+export function publicAnalysisPolicy(policy) { return { action: policy?.action || 'allow', category: policy?.category || 'Unknown', name: policy?.name || null, warning: policy?.category === 'High activity' ? (policy?.owner_unlimited?'High activity detected. Owner full-history analysis is authorized.':'High activity detected. Analysis is limited; activity alone does not identify a bot.') : null, unlimited:policy?.owner_unlimited===true, transactionLimit:policy?.owner_unlimited===true?null:policy?.transaction_limit || 5000, creditPlan: CREDIT_PLAN }; }
 
 export async function claimWalletSyncLease(wallet) { return await db("rpc/try_wallet_sync_lease", {method:"POST",body:JSON.stringify({p_wallet:wallet})}) === true; }

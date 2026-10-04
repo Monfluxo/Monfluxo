@@ -9,6 +9,7 @@ export function indexedWork(state) {
   return state?.transactions_scanned == null ? Math.max(0, Number(state?.pages_scanned || 0) * 100) : Math.max(0, Number(state.transactions_scanned) || 0);
 }
 export function transactionAllowance(state, policy) {
+  if (policy?.owner_unlimited === true) return state?.history_complete === true ? 5000 : Infinity;
   const limit = policy?.transaction_limit || 5000;
   return state?.history_complete === true ? Math.min(limit, 5000) : Math.max(0, limit - indexedWork(state));
 }

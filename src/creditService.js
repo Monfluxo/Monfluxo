@@ -18,7 +18,7 @@ export async function currentAccount(req,{active=false}={}){
  if(!sessions?.length)throw creditError('session_expired',401);
  const accounts=await creditDb(`credit_accounts?id=eq.${sessions[0].account_id}&select=*&limit=1`);const account=accounts?.[0];
  if(!account||account.disabled)throw creditError('account_disabled',403);
- if(active&&new Date(account.expires_at)<=new Date())throw creditError('subscription_expired',403);
+ if(active&&!account.is_owner&&new Date(account.expires_at)<=new Date())throw creditError('subscription_expired',403);
  return account;
 }
 export async function creditSummary(account){
@@ -42,7 +42,7 @@ export async function assertCreditAccess(req,wallet){
 }
 export async function requestCreditWallet(req,wallet,extend=0){
  if(![-1,0,2000].includes(extend))throw creditError('invalid_request');
- const account=await currentAccount(req,{active:true});await assertWalletAllowed(wallet);
+ const account=await currentAccount(req,{active:true});await assertWalletAllowed(wallet,{owner:account.is_owner===true});
  const initial=extend===0?await prepareInitialHoldings(wallet):null;
  const result=await rpc('credit_wallet_request',{p_account:account.id,p_wallet:wallet,p_extend:extend});
  try {await saveInitialHoldings(initial);}catch(error){console.warn('Initial holdings snapshot could not be saved:',error.code||error.message);return {...result,initialSnapshotSaved:false};}
